@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="DERIMOD_KARIYER_MERKEZ_SESLI_V1" version="1.0"
+  xmlns="http://www.imsproject.org/xsd/imscp_rootv1p1p2"
+  xmlns:adlcp="http://www.adlnet.org/xsd/adlcp_rootv1p2"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.imsproject.org/xsd/imscp_rootv1p1p2 imscp_rootv1p1p2.xsd http://www.imsglobal.org/xsd/imsmd_rootv1p2p1 imsmd_rootv1p2p1.xsd http://www.adlnet.org/xsd/adlcp_rootv1p2 adlcp_rootv1p2.xsd">
+  <metadata>
+    <schema>ADL SCORM</schema>
+    <schemaversion>1.2</schemaversion>
+  </metadata>
+  <organizations default="ORG_DERIMOD_KARIYER_MERKEZ_SESLI_V1">
+    <organization identifier="ORG_DERIMOD_KARIYER_MERKEZ_SESLI_V1">
+      <title>Derimod’da Kariyerini Yönet · Merkez Ofis (Sesli)</title>
+      <item identifier="ITEM_DERIMOD_KARIYER_MERKEZ_SESLI_V1" identifierref="RES_DERIMOD_KARIYER_MERKEZ_SESLI_V1" isvisible="true">
+        <title>Derimod’da Kariyerini Yönet · Merkez Ofis (Sesli)</title>
+      </item>
+    </organization>
+  </organizations>
+  <resources>
+    <resource identifier="RES_DERIMOD_KARIYER_MERKEZ_SESLI_V1" type="webcontent" adlcp:scormtype="sco" href="index.html">
+      <file href="assets/logo.png"/>
+      <file href="audio/s01.mp3"/>
+      <file href="audio/s02.mp3"/>
+      <file href="audio/s03.mp3"/>
+      <file href="audio/s04.mp3"/>
+      <file href="audio/s05.mp3"/>
+      <file href="audio/s06.mp3"/>
+      <file href="audio/s07.mp3"/>
+      <file href="audio/s08.mp3"/>
+      <file href="audio/s09.mp3"/>
+      <file href="audio/s10.mp3"/>
+      <file href="audio/s11.mp3"/>
+      <file href="audio/s12.mp3"/>
+      <file href="audio/s13.mp3"/>
+      <file href="audio/s14.mp3"/>
+      <file href="audio/s15.mp3"/>
+      <file href="audio/s16.mp3"/>
+      <file href="audio/s17.mp3"/>
+      <file href="audio/s18.mp3"/>
+      <file href="audio/s19.mp3"/>
+      <file href="audio/s20.mp3"/>
+      <file href="audio/s21.mp3"/>
+      <file href="audio/s22.mp3"/>
+      <file href="audio/s23.mp3"/>
+      <file href="audio/s24.mp3"/>
+      <file href="audio/s25.mp3"/>
+      <file href="audio/s26.mp3"/>
+      <file href="audio/s27.mp3"/>
+      <file href="audio/s28.mp3"/>
+      <file href="audio/s29.mp3"/>
+      <file href="audio/s30.mp3"/>
+      <file href="audio/s31.mp3"/>
+      <file href="audio/s32.mp3"/>
+      <file href="audio/s33.mp3"/>
+      <file href="audio/s34.mp3"/>
+      <file href="audio/s35.mp3"/>
+      <file href="audio/s36.mp3"/>
+      <file href="audio/s37.mp3"/>
+      <file href="audio/s38.mp3"/>
+      <file href="audio/s39.mp3"/>
+      <file href="audio/s40.mp3"/>
+      <file href="audio/s41.mp3"/>
+      <file href="audio/s42.mp3"/>
+      <file href="audio/s43.mp3"/>
+      <file href="content.js"/>
+      <file href="index.html"/>
+      <file href="narr.js"/>
+      <file href="player.js"/>
+      <file href="style.css"/>
+    </resource>
+  </resources>
+</manifest>
