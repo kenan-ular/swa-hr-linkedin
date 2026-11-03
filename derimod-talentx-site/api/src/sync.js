@@ -14,6 +14,17 @@ function sanProfile(p) {
   return o;
 }
 
+// Onaylar: yalnızca güncel sürüm kabul edilir; tarih sunucuda atanır
+function setConsents(C, u, src, langOf) {
+  const got = [];
+  C.CN.docs.forEach((d) => {
+    const has = u.consents && u.consents[d.k] && u.consents[d.k].v === C.CN.v;
+    const want = src && src[d.k] && (typeof src[d.k] === 'string' || src[d.k].v === C.CN.v);
+    if (want && !has) { u.consents = u.consents || {}; const l = langOf(d.k) === 'en' ? 'en' : 'tr'; u.consents[d.k] = { v: C.CN.v, at: Date.now(), lang: l }; got.push(d.k); }
+  });
+  if (got.length) { u.consentLog = (u.consentLog || []).concat(got.map((k) => ({ k, v: C.CN.v, at: Date.now() }))).slice(-50); C.log(u.email, 'Onay verildi · ' + got.join(', ') + ' · sürüm ' + C.CN.v); }
+}
+
 function apply(C, db, me, d) {
   const errs = [];
   const deny = (m) => errs.push(m);
@@ -48,6 +59,7 @@ function apply(C, db, me, d) {
       if (nu.name) cur.name = str(nu.name, 120);
       if (nu.profile) { const p = sanProfile(nu.profile); if (p) cur.profile = p; }
       if (nu.prep && typeof nu.prep === 'object') cur.prep = { yonetici: bool(nu.prep.yonetici), kurs: bool(nu.prep.kurs) };
+      if (nu.consents && typeof nu.consents === 'object') setConsents(C, cur, nu.consents, (k) => nu.consents[k] && nu.consents[k].lang);
       return;
     }
     const adminAny = can('users') || can('type') || can('roles');
@@ -193,4 +205,4 @@ function after(C, db, me) {
   if (u && !u.readyMailed && C.pstat(u).ready) { u.readyMailed = Date.now(); const p = u.profile || {}; C.mailSend('profil_tamam', u.email, C.mailUserData(u, { sk: (p.skills || []).length, cp: (p.comps || []).length })); }
 }
 
-module.exports = { apply, after };
+module.exports = { apply, after, setConsents };

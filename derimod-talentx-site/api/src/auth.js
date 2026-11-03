@@ -85,10 +85,12 @@ async function handle(op, body, req, res, C, db) {
   if (op === 'register') {
     const name = String(body.name || '').trim().slice(0, 120);
     if (!name) return { err: 'Ad soyad gerekli.' };
-    if (!body.kvkk) return { err: 'Devam etmek için KVKK onayını işaretle.' };
+    const cs = body.consents || {};
+    if (C.CN.docs.some((d) => d.req && !cs[d.k])) return { err: 'Devam etmek için sözleşme ve onay kutularının hepsini işaretle.' };
     if (u && cred && cred.hash) return { err: 'Bu adresle bir hesap zaten var. Giriş yap ya da şifreni sıfırla.', step: 'email' };
     if (u && u.status === 'askida') return { err: 'Hesabınız askıya alınmış. İnsan ve Kültür ekibiyle görüşün.' };
     if (!u) { db.users.push({ email, name, dept: 'Dış aday', role: 'aday', arole: '', bl: [], status: 'davetli', created: Date.now(), lastLogin: null, src: 'kayit', prep: {} }); C.uidSync(); audit('Aday kaydı başlatıldı'); }
+    { const nu = db.users.find((x) => x.email === email); C.DB = db; require('./sync').setConsents(C, nu, cs, (k) => cs[k]); }
     const r = await sendCode(C, db, email, 'kayit');
     return { step: 'otp', purpose: 'kayit', wait: r.wait, dev: r.dev };
   }
@@ -152,6 +154,7 @@ async function handle(op, body, req, res, C, db) {
     if (body.trust) nc.trusted.push({ device: H(dev), until: Date.now() + TRUST_TTL });
     await st.put('cred', email, nc);
     o.used = true; await st.put('otp', email, o);
+    if (body.consents && typeof body.consents === 'object') { C.DB = db; require('./sync').setConsents(C, u, body.consents, (k) => body.consents[k]); }
     const wasInvite = u.status === 'davetli';
     u.status = 'aktif'; u.hasPw = true; u.lastLogin = Date.now();
     audit(o.purpose === 'kayit' ? 'Aday hesabı oluşturuldu' : (wasInvite ? 'Hesap etkinleştirildi · şifre belirlendi' : 'Şifre yenilendi'));
