@@ -413,6 +413,8 @@ table.ats td{vertical-align:top} table.ats td:nth-child(2){min-width:230px} tabl
 .hist{list-style:none;padding:0;margin:0;display:grid;gap:8px} .hist li{display:grid;font-size:13px}
 body.noscroll{overflow:hidden}
 
+.syncb{position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:45;background:var(--card);border:1px solid var(--line);padding:8px 12px;font-size:12.5px;color:var(--ink70);opacity:0;pointer-events:none;transition:opacity .2s;max-width:min(420px,calc(100vw - 32px))}
+.syncb.on{opacity:1} .syncb.err{border-color:var(--neg);color:var(--ink);pointer-events:auto} .syncb.err b{color:var(--neg)}
 .row p+p{margin-top:8px}
 .drawer.mvd{width:min(760px,100vw)}
 .mvtools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding-top:14px}
@@ -499,7 +501,7 @@ table.mtpl{table-layout:fixed;min-width:760px} table.mtpl .em{word-break:normal;
 <main id="app"></main>
 <div id="drawer"></div>
 <footer class="foot"><div class="wrap">
-  <span>Derimod TalentX · İnsan ve Kültür · Prototip v14 · Kasım 2026</span>
+  <span>Derimod TalentX · İnsan ve Kültür · Prototip v15 · Kasım 2026</span>
   <span class="i3sig">Derimod · İnsan ve Kültür · <b>i³</b> İnovasyonla fark yarat, ilham ver, iyilikle etkile</span>
 </div></footer>
 <aside class="inbox" id="inbox" hidden aria-live="polite"></aside>
@@ -561,10 +563,11 @@ function seed(){
   };
 }
 function load(){
+  if(SERVER)return {users:[],jobs:[],apps:[],analytics:[],audit:[],outbox:[],prList:[],talentDemo:[],mailCfg:{},session:null,device:'srv'};
   var o2=null;try{var s=localStorage.getItem(KEY);if(s){var o=JSON.parse(s);if(o&&o.users)o2=migrate(o)}}catch(e){}
   if(!o2)o2=migrate(mem||seed());var keep=DB;DB=o2;try{uidSync()}catch(e){}DB=keep;return o2;
 }
-function save(){try{uidSync()}catch(e){}try{mailHooks()}catch(e){}mem=DB;try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}}
+function save(){if(SERVER){mem=DB;srvSave();return}try{uidSync()}catch(e){}try{mailHooks()}catch(e){}mem=DB;try{localStorage.setItem(KEY,JSON.stringify(DB))}catch(e){}}
 function randHex(n){var a=new Uint8Array(n);try{crypto.getRandomValues(a)}catch(e){for(var i=0;i<n;i++)a[i]=Math.floor(Math.random()*256)}return Array.prototype.map.call(a,function(b){return('0'+b.toString(16)).slice(-2)}).join('')}
 function randCode(){var a=new Uint32Array(1);try{crypto.getRandomValues(a)}catch(e){a[0]=Math.floor(Math.random()*4294967295)}return String(a[0]%1000000).padStart(6,'0')}
 function hexBytes(h){var o=new Uint8Array(h.length/2);for(var i=0;i<o.length;i++)o[i]=parseInt(h.substr(i*2,2),16);return o}
@@ -582,6 +585,118 @@ function isAdmin(){var u=me();return !!(u&&u.arole)}
 function isEmp(u){return !!(u&&(u.role==='calisan'||u.role==='admin'))}
 var ROLE={admin:'Yönetici',calisan:'Çalışan',aday:'Dış aday'};
 function isTrusted(u){var now=Date.now();u.trusted=(u.trusted||[]).filter(function(t){return t.until>now});return u.trusted.some(function(t){return t.device===DB.device})}
+
+/* ================= SUNUCU MODU ================= */
+// Azure'da (azurestaticapps.net / derimod.com) ya da ?server=1 ile açıldığında veriler tarayıcıda değil,
+// sunucudaki veritabanında tutulur. claude.ai'deki prototip yerel modda çalışmaya devam eder.
+var SERVER=!(window.__TX_CORE__)&&(/azurestaticapps\.net$|derimod\.com$|^localhost$|^127\.0\.0\.1$/.test(location.hostname)||/[?&]server=1/.test(location.search))&&!/[?&]local=1/.test(location.search);
+var BASE=null,SYNC={t:null,busy:false,dirty:false,err:'',ok:0};
+function api(path,body,method){
+  return fetch('/api/'+path,{method:method||(body?'POST':'GET'),headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin',cache:'no-store'})
+    .then(function(r){return r.json().catch(function(){return {ok:false,err:'Sunucu yanıtı okunamadı ('+r.status+').'}}).then(function(j){j.status=r.status;return j})})
+    .catch(function(){return {ok:false,status:0,err:'Sunucuya ulaşılamadı. İnternet bağlantını kontrol et.'}});
+}
+function sj(o){return JSON.stringify(o,function(k,v){return k&&k[0]==='_'?undefined:v})}
+function snapOf(d){
+  var m=function(a,k){var o={};(a||[]).forEach(function(x){o[x[k]]=sj(x)});return o};
+  return {users:m(d.users,'email'),jobs:m(d.jobs,'id'),apps:m(d.apps,'id'),tdemo:m(d.talentDemo,'id'),cfg:{mailCfg:sj(d.mailCfg||{}),prList:sj(d.prList||[]),analytics:sj(d.analytics||[])},audit:(d.audit||[]).map(sj)};
+}
+function applyState(st){
+  if(!st)return;
+  ['users','jobs','apps','analytics','audit','outbox','prList','talentDemo'].forEach(function(k){if(!Array.isArray(st[k]))st[k]=[]});
+  if(!st.mailCfg)st.mailCfg={};
+  DB=st;mem=DB;BASE=snapOf(DB);
+}
+function diffOf(){
+  if(!BASE)return null;var N=snapOf(DB),d={},any=false;
+  [['users','users'],['jobs','jobs'],['apps','apps'],['tdemo','tdemo']].forEach(function(p){
+    var a=N[p[0]],b=BASE[p[1]],up=[],del=[],src=p[0]==='tdemo'?DB.talentDemo:DB[p[0]],key=p[0]==='users'?'email':'id';
+    (src||[]).forEach(function(x){var id=x[key];if(b[id]!==a[id])up.push(JSON.parse(a[id]))});
+    Object.keys(b).forEach(function(id){if(a[id]===undefined)del.push(id)});
+    if(up.length||del.length){d[p[0]]={upsert:up,del:del};any=true}
+  });
+  var cfg={};['mailCfg','prList','analytics'].forEach(function(k){if(N.cfg[k]!==BASE.cfg[k]){cfg[k]=JSON.parse(N.cfg[k]);any=true}});
+  if(Object.keys(cfg).length)d.cfg=cfg;
+  var old={};BASE.audit.forEach(function(s){old[s]=1});var na=N.audit.filter(function(s){return !old[s]}).map(function(s){return JSON.parse(s)});
+  if(na.length){d.audit=na;any=true}
+  return any?d:null;
+}
+function syncBadge(){
+  var el=document.getElementById('syncb');if(!el){el=document.createElement('div');el.id='syncb';el.className='syncb';el.setAttribute('role','status');document.body.appendChild(el)}
+  var t=SYNC.err?'<b>Kaydedilemedi</b> '+esc(SYNC.err):SYNC.busy||SYNC.t?'Kaydediliyor…':(SYNC.ok&&Date.now()-SYNC.ok<2500?'Kaydedildi':'');
+  el.className='syncb'+(SYNC.err?' err':'')+(t?' on':'');el.innerHTML=t;
+  if(!SYNC.err&&SYNC.ok&&!SYNC.busy)setTimeout(syncBadge,2600);
+}
+function srvSave(){if(!BASE)return;clearTimeout(SYNC.t);SYNC.dirty=true;SYNC.t=setTimeout(srvPush,450);syncBadge()}
+function canRerender(){var a=document.activeElement;return !(a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&document.getElementById('app').contains(a)&&a.type!=='checkbox'&&a.type!=='radio'&&a.type!=='file')}
+function srvPush(){
+  SYNC.t=null;if(SYNC.busy){SYNC.t=setTimeout(srvPush,300);return}
+  var d=diffOf();SYNC.dirty=false;if(!d){syncBadge();return}
+  SYNC.busy=true;syncBadge();
+  api('sync',d).then(function(r){
+    SYNC.busy=false;
+    if(r.status===401){SYNC.err='';applyState(r.state);render();go('giris');syncBadge();return}
+    if(!r.ok){SYNC.err=r.err||'Değişiklik sunucuya kaydedilemedi.';if(r.state){applyState(r.state);render()}syncBadge();return}
+    SYNC.err='';SYNC.ok=Date.now();
+    if(SYNC.dirty||SYNC.t){BASE=snapOf(r.state)}else{applyState(r.state);if(canRerender())render()}
+    syncBadge();
+  });
+}
+function srvBoot(){
+  var pb=document.querySelector('.proto .wrap');if(pb)pb.innerHTML='<b>Pilot</b><span>Veriler Derimod’un Azure ortamında saklanır. Doğrulama kodları ve bildirimler gerçek e-posta adreslerine gönderilir.</span>';
+  var app=document.getElementById('app');if(app)app.innerHTML='<div class="wrap" style="padding:80px 0;text-align:center"><span class="hint">Yükleniyor…</span></div>';
+  return api('state').then(function(r){if(r.state)applyState(r.state);else{applyState({});SYNC.err=r.err||'Sunucuya ulaşılamadı.';syncBadge()}});
+}
+function srvLoginDone(){S.OTP=null;S.mail=null;var to=S.returnTo||'anasayfa';S.returnTo=null;S.L={step:'email',email:'',purpose:'',err:'',info:''};go(to);render()}
+function srvOtpStep(r,email){var L=S.L;S.OTP={email:email,purpose:r.purpose,exp:Date.now()+5*60*1000,tries:0,sentAt:Date.now(),token:null};L.purpose=r.purpose;L.step='otp';if(r.wait)L.info='Yeni kod için '+r.wait+' saniye bekleyin.';if(r.dev){S.mail={to:email,code:r.dev,exp:S.OTP.exp};S.devCode=r.dev}}
+async function srvSubmit(kind){
+  var L=S.L;L.err='';L.info='';var tr=document.getElementById('f-trust'),trust=!!(tr&&tr.checked),r;
+  {
+    if(kind==='email'){var em=document.getElementById('f-email').value.trim().toLowerCase();L.email=em;
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){L.err='Geçerli bir e-posta adresi yazın.';return render()}
+      r=await api('auth/start',{email:em});
+      if(r.unknown){L.unknown=true;L.err='Bu adres Derimod TalentX’e tanımlı değil. Çalışansan erişim için İnsan ve Kültür ekibine başvur; şirket dışından bir ilana başvuracaksan aday hesabı oluştur.';return render()}
+      L.unknown=false;if(r.err){L.err=r.err;return render()}
+      if(r.step==='otp')srvOtpStep(r,em);else{L.step='password';L.purpose='giris'}return render();
+    }
+    if(kind==='password'){r=await api('auth/password',{email:L.email,pw:document.getElementById('f-pw').value});if(r.state)applyState(r.state);
+      if(r.err){L.err=r.err;if(r.step==='email')L.step='email';return render()}
+      if(r.ok&&r.state&&r.state.session)return srvLoginDone();if(r.step==='otp')srvOtpStep(r,L.email);return render()}
+    if(kind==='register'){var re=document.getElementById('r-email').value.trim().toLowerCase(),rn=document.getElementById('r-name').value.trim();L.email=re;
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(re)){L.err='Geçerli bir e-posta adresi yaz.';return render()}
+      if(!rn){L.err='Ad soyad gerekli.';return render()}
+      if(!document.getElementById('r-kvkk').checked){L.err='Devam etmek için KVKK onayını işaretle.';return render()}
+      r=await api('auth/register',{email:re,name:rn,kvkk:true});if(r.err){L.err=r.err;if(r.step==='email')L.step='email';return render()}
+      srvOtpStep(r,re);return render()}
+    if(kind==='otp'){var code=document.getElementById('f-otp').value.replace(/\D/g,'');r=await api('auth/verify',{email:L.email,code:code,trust:trust});if(r.state)applyState(r.state);
+      if(r.err){L.err=r.err;return render()}
+      if(r.ok&&r.state&&r.state.session)return srvLoginDone();
+      if(r.step==='setpw'){S.OTP=S.OTP||{email:L.email};S.OTP.verified=true;S.OTP.token=r.token;L.step='setpw';S.mail=null;return render()}return render()}
+    if(kind==='setpw'){var p1=document.getElementById('f-np').value,p2=document.getElementById('f-np2').value,pr=pwRules(p1,L.email);
+      if(!(pr.len&&pr.mix&&pr['case']&&pr.mail)){L.err='Şifre kuralların hepsini karşılamalı.';return render()}
+      if(p1!==p2){L.err='İki şifre aynı değil.';return render()}
+      r=await api('auth/setpw',{email:L.email,token:S.OTP&&S.OTP.token,pw:p1,trust:trust});if(r.state)applyState(r.state);
+      if(r.err){L.err=r.err;if(r.step==='email'){L.step='email';S.OTP=null}return render()}
+      return srvLoginDone()}
+  }
+}
+function srvClick(act){
+  var L=S.L;
+  if(act==='forgot'){api('auth/forgot',{email:L.email}).then(function(r){if(r.err){L.err=r.err;return render()}srvOtpStep(r,L.email);L.info='Şifre sıfırlama kodu e-posta adresine gönderildi.';render()});return true}
+  if(act==='resend'){api('auth/resend',{email:L.email}).then(function(r){L.err=r.err||'';L.info=r.info||'';if(S.OTP&&!r.err&&!/bekleyin/.test(r.info||''))S.OTP.sentAt=Date.now();if(r.dev){S.mail={to:L.email,code:r.dev,exp:Date.now()+5*60*1000}}if(r.step==='email')L.step='email';render()});return true}
+  if(act==='logout'){api('auth/logout',{}).then(function(r){applyState(r.state);go('anasayfa');render()});return false}
+  return false;
+}
+function srvCvUpload(f,u){
+  S.pfErr='';S.cvUp=true;render();
+  var r=new FileReader();
+  r.onload=function(){api('cv',{name:f.name,type:f.type,data:r.result}).then(function(res){S.cvUp=false;
+    if(!res.ok){S.pfErr=res.err||'Özgeçmiş yüklenemedi.';render();return}
+    var mu=me();if(mu){mu.profile.cv=res.cv;mu.profile.updated=Date.now();log(mu.email,'Özgeçmiş yüklendi',mu.email);save()}render()})};
+  r.onerror=function(){S.cvUp=false;S.pfErr='Dosya okunamadı.';render()};
+  r.readAsDataURL(f);
+}
+function srvCvBytes(email){return fetch('/api/cv?email='+encodeURIComponent(email),{credentials:'same-origin',cache:'no-store'}).then(function(r){if(!r.ok)throw {code:'nofile'};return r.arrayBuffer()})}
 
 var DB=load();
 
@@ -1274,7 +1389,7 @@ function submitApp(u,j){
   if(!isEmp(u)&&!S.k.kvkk){S.k.err='Başvuruyu göndermek için KVKK onayını işaretle.';return false}
   var p=u.profile,edu=(p.edu||[]).filter(eduOk)[0],ex=(p.exp||[]).filter(expOk)[0];
   var answers=qs.map(function(q){var v=ans[q.id];var a=Array.isArray(v)?v.join(', '):String(v||'');return {t:q.t,a:a,flag:!!(q.knock&&v===q.knock)}});
-  var rec={id:'a'+randHex(4),uid:u.uid,jobId:j.id,email:u.email,name:u.name,phone:p.phone,at:Date.now(),status:'alindi',history:[{at:Date.now(),by:'sistem',name:'Başvuru',to:'alindi'}],ratings:{},hmView:{},notes:[],type:isEmp(u)?'ic':'dis',answers:answers,flagged:answers.some(function(a){return a.flag}),cv:p.cv?p.cv.name:'',
+  var rec={id:'a'+randHex(4),uid:u.uid,ansRaw:JSON.parse(JSON.stringify(ans||{})),jobId:j.id,email:u.email,name:u.name,phone:p.phone,at:Date.now(),status:'alindi',history:[{at:Date.now(),by:'sistem',name:'Başvuru',to:'alindi'}],ratings:{},hmView:{},notes:[],type:isEmp(u)?'ic':'dis',answers:answers,flagged:answers.some(function(a){return a.flag}),cv:p.cv?p.cv.name:'',
     profile:{city:p.city,edu:edu?[edu.level,edu.school==='Diğer'?edu.schoolOther:edu.school,edu.level==='Lise'?edu.dept:(edu.dept==='Diğer'?edu.deptOther:edu.dept),edu.state+(edu.year?' '+edu.year:'')].filter(Boolean).join(' · '):'',
       exp:[p.totalExp,ex?ex.title+' · '+ex.company:''].filter(Boolean).join(' · '),skills:p.skills.slice(),comps:p.comps.slice()}};
   DB.apps.unshift(rec);mailApp(rec,'basvuru_alindi');(j.hms||[]).forEach(function(e){var hu=find(e);mailSend('hm_yeni_basvuru',e,{name:hu?hu.name:'',cand:u.name,ctype:rec.type==='ic'?'İç aday':'Dış aday',total:DB.apps.filter(function(x){return x.jobId===j.id}).length,job:j.title,jid:j.id})});log(u.email,'Başvuru · '+j.title+' ('+(rec.type==='ic'?'iç':'dış')+' aday)'+(rec.flagged?' · eleme kriteri':''),u.email);
@@ -1295,6 +1410,7 @@ function cvBytes(){
   var u=me(),cv=u&&u.profile.cv;
   if(S.cvFile&&cv&&S.cvFile.name===cv.name)return S.cvFile.arrayBuffer();
   if(cv&&cv.data){var b64=cv.data.split(',')[1]||'',bin=atob(b64),a=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return Promise.resolve(a.buffer)}
+  if(SERVER&&cv&&cv.blob)return srvCvBytes(u.email);
   return Promise.reject({code:'nofile'});
 }
 async function pdfText(buf){
@@ -1729,7 +1845,7 @@ function profBlock(a){
     h+=row('Beceriler','<div class="chips">'+(pr.skills||[]).map(function(s){return '<span class="chip" style="cursor:default">'+esc(s)+'</span>'}).join('')+'</div>');
     h+=row('Yetkinlikler','<div class="chips">'+(pr.comps||[]).map(function(s){return '<span class="chip" style="cursor:default">'+esc(s)+'</span>'}).join('')+'</div>');
   }
-  var cv=p&&p.cv;h+=row('Özgeçmiş',cv?esc(cv.name)+(cv.data&&DOWNLOADS?' <button class="btn ghost sm" data-act="atsCv" data-a="'+a.id+'">İndir</button>':''):esc(a.cv||'—'));
+  var cv=p&&p.cv;h+=row('Özgeçmiş',cv?esc(cv.name)+((cv.data||cv.blob)&&DOWNLOADS?' <button class="btn ghost sm" data-act="atsCv" data-a="'+a.id+'">İndir</button>':''):esc(a.cv||'—'));
   return h;
 }
 function drawerHTML(){
@@ -2152,7 +2268,7 @@ function careerArch(u){
 // Tüm e-postalar e-posta istemcilerine uygun (tablo + satır içi stil) HTML olarak üretilir.
 // Prototipte gönderilmez: DB.outbox'a yazılır ve "Demo posta kutusu"nda görünür.
 // Canlıda mailSend() aynı HTML'i Azure Communication Services'e iletecek.
-var SITE_URL=/azurestaticapps\.net$|derimod\.com$/.test(location.hostname)?location.origin+'/':'https://zealous-pond-00b82b103.5.azurestaticapps.net/';
+var SITE_URL=/azurestaticapps\.net$|derimod\.com$|^localhost$/.test(location.hostname)?location.origin+location.pathname.replace(/[^\/]*$/,''):'https://zealous-pond-00b82b103.5.azurestaticapps.net/derimod-talentx-site/site/';
 var MF="'Poppins',Arial,Helvetica,sans-serif";
 function mlink(h){return SITE_URL+'#'+h}
 function fn1(n){return String(n||'').trim().split(/\s+/)[0]||''}
@@ -2261,6 +2377,7 @@ var MT={
 function mailOn(k){var c=DB.mailCfg||{};return MT[k].lock?true:(c[k]!==undefined?!!c[k]:MT[k].def)}
 function mailBuild(k,d){var b=MT[k].b(d);b.html=mailHTML(b);return b}
 function mailSend(k,to,d,force){
+  if(SERVER)return !!(MT[k]&&to&&!/\.test$/i.test(to));
   if(!MT[k]||!to)return false;if(!force&&!mailOn(k))return false;if(/\.test$/i.test(to))return false;
   DB.outbox=DB.outbox||[];d=d||{};d.to=to;
   var m={id:'m'+randHex(4),at:Date.now(),k:k,to:to,s:MT[k].b(d).s,d:d};
@@ -2293,7 +2410,7 @@ function mailViewer(){
     return h+'</div></aside>';
   }
   S.mvHTML=b.html;
-  tools='<div class="mvtools">'+back+tools+'<div class="seg" role="group" aria-label="Görünüm"><button data-act="mlW" data-v="d" aria-pressed="'+(V.w!=='m')+'">Masaüstü</button><button data-act="mlW" data-v="m" aria-pressed="'+(V.w==='m')+'">Telefon</button></div>'+(DOWNLOADS?'<button class="btn ghost sm" data-act="mlDl">HTML indir</button>':'')+'</div>';
+  tools='<div class="mvtools">'+back+tools+'<div class="seg" role="group" aria-label="Görünüm"><button data-act="mlW" data-v="d" aria-pressed="'+(V.w!=='m')+'">Masaüstü</button><button data-act="mlW" data-v="m" aria-pressed="'+(V.w==='m')+'">Telefon</button></div>'+(DOWNLOADS?'<button class="btn ghost sm" data-act="mlDl">HTML indir</button>':'')+(SERVER&&V.tpl&&can('mail')&&V.tpl!=='kod'?'<button class="btn sm" data-act="mlTest">Kendime test e-postası gönder</button>':'')+'</div>'+(S.mvMsg?'<div class="msg '+(S.mvMsg[0])+' mt" role="status">'+S.mvMsg[1]+'</div>':'');
   return '<div class="dback" data-act="mlClose"></div><aside class="drawer mvd" role="dialog" aria-modal="true" aria-label="E-posta"><div class="dhd"><div style="min-width:0"><div class="eyebrow">'+(V.tpl?'E-posta şablonu':'Demo posta kutusu')+'</div><h2>'+esc(head)+'</h2><div class="em">'+sub+'</div>'+(V.tpl?'<div class="em" style="margin-top:4px">Konu: <b>'+esc(b.s)+'</b></div><div class="em">Ön metin: '+esc(b.p||'')+'</div>':'')+'</div><div class="dnav"><button class="x" data-act="mlClose" aria-label="Kapat">×</button></div></div>'+
     '<div class="dbody">'+tools+'<div class="mvframe'+(V.w==='m'?' m':'')+'"><iframe id="mvf" title="E-posta görünümü" sandbox="allow-same-origin"></iframe></div></div></aside>';
 }
@@ -2316,7 +2433,8 @@ function mailTab(){
   var ob=DB.outbox||[],on=Object.keys(MT).filter(mailOn).length,wk=ob.filter(function(m){return m.at>Date.now()-7*864e5}).length,F=S.mf=S.mf||{k:'',q:''};
   var h='<div class="strip" style="margin-top:24px"><div class="m"><span class="lab">Şablon</span><div class="mv">'+Object.keys(MT).length+'</div></div><div class="m"><span class="lab">Otomatik açık</span><div class="mv">'+on+'</div></div><div class="m"><span class="lab">Son 7 günde</span><div class="mv">'+wk+'</div><div class="foot">demo gönderim</div></div><div class="m"><span class="lab">Son gönderim</span><div class="mv" style="font-size:16px">'+(ob[0]?dt(ob[0].at):'—')+'</div></div></div>';
   if(S.adm.ok)h+='<div class="msg ok mt" role="status">'+S.adm.ok+'</div>';
-  h+='<div class="callout mt"><h3>Prototip</h3><p>E-postalar şu an gönderilmiyor; gönderim kaydına yazılıyor ve sağ alttaki demo posta kutusunda görünüyor. Azure e-posta servisi bağlandığında aynı şablonlar gerçek gönderimde kullanılacak. Şablonları HTML olarak indirip e-posta istemcilerinde deneyebilirsin.</p></div>';
+  if(SERVER)h+='<div class="callout mt"><h3>'+(DB.mailReady?'E-posta servisi bağlı':'E-posta servisi henüz bağlı değil')+'</h3><p>'+(DB.mailReady?'E-postalar Azure Communication Services üzerinden alıcılara gönderilir. Şablon önizlemesinden kendine test e-postası gönderebilirsin.':'Azure’da ACS_CONNECTION_STRING ve MAIL_SENDER ayarları tanımlanınca e-postalar gönderilmeye başlar. O zamana kadar gönderim kaydında “Servis bağlı değil” olarak görünür.')+'</p></div>';
+  else h+='<div class="callout mt"><h3>Prototip</h3><p>E-postalar şu an gönderilmiyor; gönderim kaydına yazılıyor ve sağ alttaki demo posta kutusunda görünüyor. Azure e-posta servisi bağlandığında aynı şablonlar gerçek gönderimde kullanılacak. Şablonları HTML olarak indirip e-posta istemcilerinde deneyebilirsin.</p></div>';
   h+='<h2 class="sec">Şablonlar ve tetikleyiciler</h2><p class="secnote">Otomatik kutusu kapalı olan e-posta gönderilmez. Doğrulama kodu ve şifre değişikliği güvenlik e-postalarıdır, kapatılamaz.</p>';
   MG.forEach(function(g){var ks=Object.keys(MT).filter(function(k){return MT[k].g===g[0]});if(!ks.length)return;
     h+='<div class="gl" style="margin-top:22px">'+g[1]+'</div><div class="tscroll"><table class="mtpl"><thead><tr><th>Şablon</th><th>Ne zaman gider?</th><th>Kime</th><th>Otomatik</th><th></th></tr></thead><tbody>'+ks.map(function(k){var t=MT[k],o=mailOn(k);
@@ -2325,16 +2443,18 @@ function mailTab(){
   var L=ob.filter(function(m){return (!F.k||m.k===F.k)&&(!F.q||fz(m.to+' '+m.s).indexOf(fz(F.q))>-1)});
   h+='<div class="atshd" style="margin-top:36px"><div><h2 class="sec" style="margin-top:0">Gönderim kaydı</h2><p class="secnote" style="margin-bottom:0">Son 300 e-posta · '+ob.length+' kayıt</p></div>'+(can('system')&&ob.length?'<button class="btn quiet sm" data-act="mlClear">Kaydı temizle</button>':'')+'</div>';
   h+='<div class="toolbar" style="margin-top:12px"><div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end"><div class="field"><label for="ml-q">Ara</label><input id="ml-q" type="search" value="'+esc(F.q)+'" placeholder="Alıcı ya da konu"></div><div class="field" style="min-width:200px"><label>Şablon</label><select data-ml="k">'+opt('','Tümü',F.k)+Object.keys(MT).map(function(k){return opt(k,MT[k].n,F.k)}).join('')+'</select></div></div></div>';
-  h+='<div class="tscroll"><table><thead><tr><th>Zaman</th><th>Kime</th><th>Şablon</th><th>Konu</th><th>Durum</th><th></th></tr></thead><tbody>'+(L.length?L.slice(0,100).map(function(m){return '<tr><td>'+dt(m.at)+'</td><td style="font-family:var(--f-body)">'+esc(m.to)+'</td><td style="font-family:var(--f-body)">'+esc(MT[m.k].n)+'</td><td style="font-family:var(--f-body);white-space:normal;min-width:220px">'+esc(m.s)+'</td><td><span class="pill na">Demo · gönderilmedi</span></td><td><button class="btn ghost sm" data-act="mlOpen" data-id="'+m.id+'" data-l="all">Aç</button></td></tr>'}).join(''):'<tr><td colspan="6" class="empty">Kayıt yok.</td></tr>')+'</tbody></table></div>';
+  h+='<div class="tscroll"><table><thead><tr><th>Zaman</th><th>Kime</th><th>Şablon</th><th>Konu</th><th>Durum</th><th></th></tr></thead><tbody>'+(L.length?L.slice(0,100).map(function(m){return '<tr><td>'+dt(m.at)+'</td><td style="font-family:var(--f-body)">'+esc(m.to)+'</td><td style="font-family:var(--f-body)">'+esc(MT[m.k].n)+'</td><td style="font-family:var(--f-body);white-space:normal;min-width:220px">'+esc(m.s)+'</td><td>'+mailStPill(m)+'</td><td><button class="btn ghost sm" data-act="mlOpen" data-id="'+m.id+'" data-l="all">Aç</button></td></tr>'}).join(''):'<tr><td colspan="6" class="empty">Kayıt yok.</td></tr>')+'</tbody></table></div>';
   return h;
 }
-function mailRemind(list){var n=0,sk=0;list.forEach(function(p){if(p.demo||/\.test$/i.test(p.email)){sk++;return}var f=tFacts(p);if(f.ready)return;if(mailSend('profil_hatirlat',p.email,{name:p.name,v:p.kind==='ic'?'ic':'dis',pct:f.pct,miss:f.miss},true))n++});log(me().email,'Profil hatırlatma e-postası · '+n);return [n,sk]}
+function mailStPill(m){if(!SERVER)return '<span class="pill na">Demo · gönderilmedi</span>';var x={gonderildi:['ok','Gönderildi'],kuyrukta:['wa','Kuyrukta'],hata:['no','Hata'],yapilandirilmadi:['na','Servis bağlı değil']}[m.st]||['na',m.st||'—'];return '<span class="pill '+x[0]+'"'+(m.err?' title="'+esc(m.err)+'"':'')+'>'+x[1]+'</span>'}
+function mailRemind(list){var n=0,sk=0,ids=[];list.forEach(function(p){if(p.demo||/\.test$/i.test(p.email)){sk++;return}var f=tFacts(p);if(f.ready)return;if(SERVER){ids.push(p.id);n++;return}if(mailSend('profil_hatirlat',p.email,{name:p.name,v:p.kind==='ic'?'ic':'dis',pct:f.pct,miss:f.miss},true))n++});if(SERVER){if(ids.length)api('mail/remind',{ids:ids}).then(function(r){if(r.state){applyState(r.state);render()}})}else log(me().email,'Profil hatırlatma e-postası · '+n);return [n,sk]}
 function mlClick(act,b){
   if(act==='mlOpen'){S.mv={open:b.getAttribute('data-id'),list:b.getAttribute('data-l')||'sess',w:S.mv&&S.mv.w||'d'};render();return true}
   if(act==='mlList'){S.mv={list:'sess'};render();return true}
   if(act==='mlBack'){S.mv={list:S.mv&&S.mv.list||'sess',w:S.mv&&S.mv.w};render();return true}
-  if(act==='mlClose'){S.mv=null;render();return true}
-  if(act==='mlTpl'){S.mv={tpl:b.getAttribute('data-k'),w:'d'};render();return true}
+  if(act==='mlClose'){S.mv=null;S.mvMsg=null;render();return true}
+  if(act==='mlTest'){if(!SERVER||!S.mv||!S.mv.tpl)return true;S.mvMsg=['info','Gönderiliyor…'];render();api('mail/test',{k:S.mv.tpl,v:S.mv.v}).then(function(r){if(r.state)applyState(r.state);S.mvMsg=r.ok?(r.st==='gonderildi'?['ok','Test e-postası '+esc(me().email)+' adresine gönderildi.']:['err','Gönderilemedi: '+(r.st==='yapilandirilmadi'?'e-posta servisi henüz bağlı değil.':'servis hatası.')]):['err',r.err||'Gönderilemedi.'];render()});return true}
+  if(act==='mlTpl'){S.mv={tpl:b.getAttribute('data-k'),w:'d'};S.mvMsg=null;render();return true}
   if(act==='mlVar'){if(S.mv)S.mv.v=b.getAttribute('data-v');render();return true}
   if(act==='mlW'){if(S.mv)S.mv.w=b.getAttribute('data-v');render();return true}
   if(act==='mlDl'){if(DOWNLOADS&&S.mvHTML)DOWNLOADS.save({filename:'derimod-talentx-'+(S.mv.tpl||(outById(S.mv.open)||{}).k||'eposta')+(S.mv.v?'-'+S.mv.v:'')+'.html',data:S.mvHTML}).catch(function(){});return true}
@@ -2422,7 +2542,7 @@ function usersTab(){
   h+='</tbody></table></div>';
   if(can('audit'))h+='<h2 class="sec">Erişim kayıtları</h2><p class="secnote">Son 25 olay.</p><div class="tscroll"><table class="log"><thead><tr><th>Zaman</th><th>Kullanıcı</th><th>Olay</th><th>İşlemi yapan</th></tr></thead><tbody>'+
     DB.audit.slice(0,25).map(function(a){return '<tr><td>'+dt(a.at)+'</td><td style="font-family:var(--f-body)">'+esc(a.email)+'</td><td style="font-family:var(--f-body)">'+esc(a.ev)+'</td><td style="font-family:var(--f-body);color:var(--ink50)">'+esc(a.who)+'</td></tr>'}).join('')+'</tbody></table></div>';
-  if(can('system'))h+='<div class="callout mt" style="margin-top:36px"><h3>Prototip verisi</h3><p>Kullanıcılar ve şifreler şu an yalnızca bu tarayıcıda tutuluyor. Canlı sürümde bu liste kurumsal kimlik altyapısına taşınacak.</p><div style="margin-top:12px">'+
+  if(can('system')&&!SERVER)h+='<div class="callout mt" style="margin-top:36px"><h3>Prototip verisi</h3><p>Kullanıcılar ve şifreler şu an yalnızca bu tarayıcıda tutuluyor. Canlı sürümde bu liste kurumsal kimlik altyapısına taşınacak.</p><div style="margin-top:12px">'+
     (A2.confirmReset?'<span class="confirm">Tüm veriler başlangıç durumuna dönsün mü? <button class="btn danger sm" data-act="resetYes">Sıfırla</button><button class="btn ghost sm" data-act="resetNo">Vazgeç</button></span>':'<button class="btn ghost sm" data-act="resetAll">Prototip verisini sıfırla</button>')+'</div></div>';
   return h;
 }
@@ -2501,6 +2621,7 @@ function loginDone(u,trust){
 var busy=false;
 async function onSubmit(form){
   var kind=form.getAttribute('data-form'),L=S.L;L.err='';L.info='';
+  if(SERVER&&/^(email|password|register|otp|setpw)$/.test(kind))return srvSubmit(kind);
   if(kind==='email'){
     var em=document.getElementById('f-email').value.trim().toLowerCase();L.email=em;
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){L.err='Geçerli bir e-posta adresi yazın.';return render()}
@@ -2569,7 +2690,7 @@ async function onSubmit(form){
     var rl1=document.getElementById('a-role').value,uv1=normEid(document.getElementById('a-uid').value);if(ar1)rl1='calisan';
     if(uv1&&rl1!=='aday'){if(!eidValid(uv1)){A2.err='Kullanıcı ID E ile başlamalı (örn. E10234) ya da yalnızca sicil numarası olmalı.';return render()}var ow1=uidOwner(uv1);if(ow1){A2.err=esc(uv1)+' başka kullanıcıda kayıtlı: '+esc(ow1.email);return render()}}
     addUser(e,n,document.getElementById('a-dept').value,rl1,ar1,rl1==='aday'?'':uv1);
-    A2.ok=esc(e)+' eklendi · ID '+esc(find(e).uid)+(find(e).uidTemp?' (geçici)':'')+'. İlk girişte kodla doğrulayıp şifresini belirleyecek.';save();return render();
+    A2.ok=esc(e)+' eklendi'+(SERVER?'':' · ID '+esc(find(e).uid)+(find(e).uidTemp?' (geçici)':''))+'. İlk girişte kodla doğrulayıp şifresini belirleyecek.';save();return render();
   }
   if(kind==='bulk'){
     var B=S.adm;B.err='';B.ok='';
@@ -2631,6 +2752,7 @@ function cvUpload(inp){
   if(!/\.(pdf|docx?)$/i.test(f.name)){S.pfErr='Yalnızca PDF, DOC ya da DOCX yükleyebilirsin.';render();return}
   if(f.size>5*1024*1024){S.pfErr='Dosya 5 MB’tan büyük. Daha küçük bir dosya yükle.';render();return}
   S.cvFile=f;S.cvx={status:'idle'};
+  if(SERVER){srvCvUpload(f,u);return}
   var done=function(data){u.profile.cv={name:f.name,size:f.size,type:f.type,at:Date.now(),data:data||null};pfSave();log(u.email,'Özgeçmiş yüklendi',u.email);save();render()};
   if(f.size<=1.5*1024*1024&&window.FileReader){var r=new FileReader();r.onload=function(){done(r.result)};r.onerror=function(){done(null)};r.readAsDataURL(f)}else done(null);
 }
@@ -2663,7 +2785,7 @@ function atsClick(act,b){
   if(act==='atsClr'){var key=b.getAttribute('data-k');if(key.indexOf('cs:')===0)F.cs=F.cs.filter(function(x){return x!==key.slice(3)});else if(key.indexOf('cc:')===0)F.cc=F.cc.filter(function(x){return x!==key.slice(3)});else{F[key]='';if(key==='job'){F.cs=[];F.cc=[]}}F.page=0;render();return}
   if(act==='atsRate'){if(!a||!can('notes'))return;var v2=+b.getAttribute('data-v'),me1=me().email;a.ratings=a.ratings||{};if(a.ratings[me1]===v2)delete a.ratings[me1];else a.ratings[me1]=v2;log(a.email,'Puan · '+(a.ratings[me1]||'kaldırıldı'));save();render();return}
   if(act==='atsHMV'){if(!a||!ownsJob(jobById(a.jobId)))return;a.hmView=a.hmView||{};var me2=me().email,hv=b.getAttribute('data-v');if(a.hmView[me2]&&a.hmView[me2].v===hv)delete a.hmView[me2];else a.hmView[me2]={v:hv,at:Date.now()};log(a.email,'Hiring Manager görüşü · '+hv);save();render();return}
-  if(act==='atsCv'){var au=a&&appUser(a),cv=au&&au.profile&&au.profile.cv;if(!cv||!cv.data||!DOWNLOADS)return;try{var b64=cv.data.split(',')[1],bin=atob(b64),arr=new Uint8Array(bin.length);for(var q=0;q<bin.length;q++)arr[q]=bin.charCodeAt(q);DOWNLOADS.save({filename:cv.name,data:arr}).catch(function(){})}catch(x){}return}
+  if(act==='atsCv'){var au=a&&appUser(a),cv=au&&au.profile&&au.profile.cv;if(SERVER&&cv&&cv.blob&&DOWNLOADS){srvCvBytes(a.email).then(function(buf){DOWNLOADS.save({filename:cv.name,data:new Blob([buf],{type:cv.type||'application/pdf'})})}).catch(function(){});return}if(!cv||!cv.data||!DOWNLOADS)return;try{var b64=cv.data.split(',')[1],bin=atob(b64),arr=new Uint8Array(bin.length);for(var q=0;q<bin.length;q++)arr[q]=bin.charCodeAt(q);DOWNLOADS.save({filename:cv.name,data:arr}).catch(function(){})}catch(x){}return}
   if(act==='atsDemo'){if(!can('system'))return;var m=atsDemo(150);S.adm.ok=m+' örnek başvuru oluşturuldu. Örnek başvurular “Örnek” etiketiyle görünür ve tek tıkla silinebilir.';render();return}
   if(act==='atsDemoDel'){if(!can('system'))return;var before=DB.apps.length;DB.apps=DB.apps.filter(function(x){return !x.demo});F.open=null;F.sel={};log(me().email,'Örnek başvurular silindi · '+(before-DB.apps.length));S.adm.ok=(before-DB.apps.length)+' örnek başvuru silindi.';save();render();return}
 }
@@ -2677,9 +2799,10 @@ document.addEventListener('click',function(ev){
   var b=ev.target.closest('[data-act]');if(!b||b.tagName==='SELECT')return;
   var act=b.getAttribute('data-act'),e=b.getAttribute('data-e'),u=e?find(e):null,A2=S.adm;
   if(act==='toLogin'){S.returnTo=null;resetLogin();return}
-  if(act==='logout'){var m=me();if(m)log(m.email,'Çıkış yapıldı',m.email);DB.session=null;S.adm={q:'',err:'',ok:'',confirm:null,confirmReset:false,tab:'users',jconfirm:null,draft:null,rf:'',openApp:null};S.k={tab:null,open:null,err:'',ok:'',ans:{},kvkk:false};S.cvx=null;S.cvFile=null;S.ats=null;S.tal=null;S.mv=null;save();go('anasayfa');return}
+  if(act==='logout'){var m=me();if(m)log(m.email,'Çıkış yapıldı',m.email);DB.session=null;S.adm={q:'',err:'',ok:'',confirm:null,confirmReset:false,tab:'users',jconfirm:null,draft:null,rf:'',openApp:null};S.k={tab:null,open:null,err:'',ok:'',ans:{},kvkk:false};S.cvx=null;S.cvFile=null;S.ats=null;S.tal=null;S.mv=null;if(SERVER){api('auth/logout',{}).then(function(r){applyState(r.state);go('anasayfa');render()});return}save();go('anasayfa');return}
   if(/^ml[A-Z]/.test(act)&&mlClick(act,b))return;
   if(act==='closeInbox'){S.inboxOpen=false;renderInbox();return}
+  if(SERVER&&(act==='forgot'||act==='resend')){srvClick(act);return}
   if(act==='changeEmail'){S.L={step:'email',email:S.L.email,purpose:'',err:'',info:''};S.OTP=null;render();return}
   if(act==='forgot'){var fu=find(S.L.email);if(fu){sendCode(fu.email,'sifirlama');log(fu.email,'Şifre sıfırlama kodu gönderildi',fu.email);save()}render();return}
   if(act==='resend'){
@@ -2759,7 +2882,7 @@ document.addEventListener('click',function(ev){
   }
   if(act==='suspend'&&u){u.status='askida';u.trusted=[];log(u.email,'Hesap askıya alındı');A2.ok=esc(u.email)+' askıya alındı.';save();render();return}
   if(act==='activate'&&u){u.status=u.pw?'aktif':'davetli';log(u.email,'Hesap yeniden etkinleştirildi');save();render();return}
-  if(act==='resetpw'&&u){u.pw=null;u.status=u.status==='askida'?'askida':'davetli';u.trusted=[];u.fails=0;u.lockUntil=0;log(u.email,'Şifre yönetici tarafından sıfırlandı');A2.ok=esc(u.email)+' için şifre sıfırlandı. Kişi bir sonraki girişte kodla doğrulayıp yeni şifre belirleyecek.';save();render();return}
+  if(act==='resetpw'&&u){u.pw=null;u.pwReset=Date.now();u.status=u.status==='askida'?'askida':'davetli';u.trusted=[];u.fails=0;u.lockUntil=0;log(u.email,'Şifre yönetici tarafından sıfırlandı');A2.ok=esc(u.email)+' için şifre sıfırlandı. Kişi bir sonraki girişte kodla doğrulayıp yeni şifre belirleyecek.';save();render();return}
   if(act==='resetAll'){A2.confirmReset=true;render();return}
   if(act==='resetNo'){A2.confirmReset=false;render();return}
   if(act==='resetYes'){var dev=DB.device;DB=seed();DB.device=dev;mem=null;try{localStorage.removeItem(KEY)}catch(x){}A2.confirmReset=false;save();go('anasayfa');return}
@@ -2816,5 +2939,5 @@ document.addEventListener('keydown',function(ev){var t=ev.target;if(ev.key==='En
 window.addEventListener('hashchange',route);
 try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render)}catch(e){}
 try{new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']})}catch(e){}
-route();
+if(!window.__TX_CORE__){if(SERVER)srvBoot().then(route);else route()}
 </script>

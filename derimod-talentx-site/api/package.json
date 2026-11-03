@@ -1,0 +1,14 @@
+{
+  "name": "derimod-talentx-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Derimod TalentX sunucu tarafı (Azure Static Web Apps yönetilen API)",
+  "main": "src/index.js",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@azure/communication-email": "^1.0.0",
+    "@azure/data-tables": "^13.2.2",
+    "@azure/functions": "^4.5.0",
+    "@azure/storage-blob": "^12.24.0"
+  }
+}
