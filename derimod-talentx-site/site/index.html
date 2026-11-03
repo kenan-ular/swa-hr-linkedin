@@ -418,6 +418,11 @@ table.ats td{vertical-align:top} table.ats td:nth-child(2){min-width:230px} tabl
 .hist{list-style:none;padding:0;margin:0;display:grid;gap:8px} .hist li{display:grid;font-size:13px}
 body.noscroll{overflow:hidden}
 
+.cnb{border-top:1px solid var(--line);padding-top:14px;display:grid;gap:10px;margin-top:4px}
+.cnb-hd{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.cnseg button{padding:4px 10px!important;font-size:12px!important}
+.cnl span{font-size:13.5px;line-height:1.5} .cnread{color:var(--th-read)!important;text-decoration:underline;font-size:13px;font-weight:600}
+.cntext h3{font-size:15px;font-weight:600;margin:20px 0 6px} .cntext p{font-size:14px;line-height:1.7;color:var(--ink70);margin:0 0 12px}
 .syncb{position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:45;background:var(--card);border:1px solid var(--line);padding:8px 12px;font-size:12.5px;color:var(--ink70);opacity:0;pointer-events:none;transition:opacity .2s;max-width:min(420px,calc(100vw - 32px))}
 .syncb.on{opacity:1} .syncb.err{border-color:var(--neg);color:var(--ink);pointer-events:auto} .syncb.err b{color:var(--neg)}
 .row p+p{margin-top:8px}
@@ -506,7 +511,7 @@ table.mtpl{table-layout:fixed;min-width:760px} table.mtpl .em{word-break:normal;
 <main id="app"></main>
 <div id="drawer"></div>
 <footer class="foot"><div class="wrap">
-  <span>Derimod TalentX · İnsan ve Kültür · Prototip v15 · Kasım 2026</span>
+  <span>Derimod TalentX · İnsan ve Kültür · Prototip v16 · Kasım 2026</span>
   <span class="i3sig">Derimod · İnsan ve Kültür · <b>i³</b> İnovasyonla fark yarat, ilham ver, iyilikle etkile</span>
 </div></footer>
 <aside class="inbox" id="inbox" hidden aria-live="polite"></aside>
@@ -670,8 +675,8 @@ async function srvSubmit(kind){
     if(kind==='register'){var re=document.getElementById('r-email').value.trim().toLowerCase(),rn=document.getElementById('r-name').value.trim();L.email=re;
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(re)){L.err='Geçerli bir e-posta adresi yaz.';return render()}
       if(!rn){L.err='Ad soyad gerekli.';return render()}
-      if(!document.getElementById('r-kvkk').checked){L.err='Devam etmek için KVKK onayını işaretle.';return render()}
-      r=await api('auth/register',{email:re,name:rn,kvkk:true});if(r.err){L.err=r.err;if(r.step==='email')L.step='email';return render()}
+      var rc=cnCollect('r');if(!rc.all){L.err='Devam etmek için sözleşme ve onay kutularının hepsini işaretle.';return render()}
+      r=await api('auth/register',{email:re,name:rn,kvkk:true,consents:rc.map});S.cnChk={};if(r.err){L.err=r.err;if(r.step==='email')L.step='email';return render()}
       srvOtpStep(r,re);return render()}
     if(kind==='otp'){var code=document.getElementById('f-otp').value.replace(/\D/g,'');r=await api('auth/verify',{email:L.email,code:code,trust:trust});if(r.state)applyState(r.state);
       if(r.err){L.err=r.err;return render()}
@@ -680,7 +685,8 @@ async function srvSubmit(kind){
     if(kind==='setpw'){var p1=document.getElementById('f-np').value,p2=document.getElementById('f-np2').value,pr=pwRules(p1,L.email);
       if(!(pr.len&&pr.mix&&pr['case']&&pr.mail)){L.err='Şifre kuralların hepsini karşılamalı.';return render()}
       if(p1!==p2){L.err='İki şifre aynı değil.';return render()}
-      r=await api('auth/setpw',{email:L.email,token:S.OTP&&S.OTP.token,pw:p1,trust:trust});if(r.state)applyState(r.state);
+      var sc=cnCollect('s');if(L.purpose==='aktivasyon'&&!sc.all){L.err='Devam etmek için sözleşme ve onay kutularının hepsini işaretle.';return render()}S.cnChk={};
+      r=await api('auth/setpw',{email:L.email,token:S.OTP&&S.OTP.token,pw:p1,trust:trust,consents:sc.map});if(r.state)applyState(r.state);
       if(r.err){L.err=r.err;if(r.step==='email'){L.step='email';S.OTP=null}return render()}
       return srvLoginDone()}
   }
@@ -910,14 +916,14 @@ V.giris=function(){
   if(step==='email'){
     f='<form class="form" data-form="email" novalidate>'+msg+'<div class="field"><label for="f-email">İş e-postası</label><input id="f-email" type="email" autocomplete="username" placeholder="ad.soyad@derimod.com" value="'+esc(L.email)+'" required></div><div class="acts"><button class="btn" type="submit">Devam et</button>'+(L.unknown?'<button type="button" class="btn ghost" data-act="toRegister">Aday hesabı oluştur</button>':'')+'</div><p class="hint">Çalışanlar İnsan ve Kültür tarafından tanımlanan kurumsal adresleriyle giriş yapar. Şirket dışından bir ilana başvuracaksan aday hesabı oluşturabilirsin.</p></form>';
   }else if(step==='register'){
-    f='<form class="form" data-form="register" novalidate>'+msg+'<p style="margin:0;font-size:14px;color:var(--ink70)">Aday hesabıyla dış ilanları görüp başvurabilirsin. Çalışanlara özel sayfalar bu hesapla açılmaz.</p><div class="field"><label for="r-email">E-posta</label><input id="r-email" type="email" autocomplete="email" value="'+esc(L.email)+'" required></div><div class="field"><label for="r-name">Ad soyad</label><input id="r-name" type="text" autocomplete="name" required></div><label class="check"><input type="checkbox" id="r-kvkk"><span>Bilgilerimin yalnızca işe alım sürecinde, yetkili kişilerce ve KVKK kapsamında kullanılmasını kabul ediyorum.</span></label><div class="acts"><button class="btn" type="submit">Doğrulama kodu gönder</button><button type="button" class="btn quiet sm" data-act="changeEmail">Vazgeç</button></div></form>';
+    f='<form class="form" data-form="register" novalidate>'+msg+'<p style="margin:0;font-size:14px;color:var(--ink70)">Aday hesabıyla dış ilanları görüp başvurabilirsin. Çalışanlara özel sayfalar bu hesapla açılmaz.</p><div class="field"><label for="r-email">E-posta</label><input id="r-email" type="email" autocomplete="email" value="'+esc(L.email)+'" required></div><div class="field"><label for="r-name">Ad soyad</label><input id="r-name" type="text" autocomplete="name" required></div>'+consentBlock('r',null)+'<div class="acts"><button class="btn" type="submit">Doğrulama kodu gönder</button><button type="button" class="btn quiet sm" data-act="changeEmail">Vazgeç</button></div></form>';
   }else if(step==='password'){
     f='<form class="form" data-form="password" novalidate>'+msg+'<div class="field"><label>E-posta</label><div style="display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:14.5px"><span style="word-break:break-all">'+esc(L.email)+'</span><button type="button" class="btn quiet sm" data-act="changeEmail">Değiştir</button></div></div><div class="field"><label for="f-pw">Şifre</label><input id="f-pw" type="password" autocomplete="current-password" required></div><div class="acts"><button class="btn" type="submit">Giriş yap</button><button type="button" class="btn quiet sm" data-act="forgot">Şifremi unuttum</button></div></form>';
   }else if(step==='otp'){
     var why={kayit:'Aday hesabını açmadan önce adresin sana ait olduğunu doğrulamak için',aktivasyon:'Bu adresin size ait olduğunu doğrulamak için',giris:'Bu cihaz tanınmadığı için',sifirlama:'Şifrenizi yenilemek için'}[L.purpose];
     f='<form class="form" data-form="otp" novalidate>'+msg+'<p style="margin:0;font-size:14px;color:var(--ink70)">'+why+' <b style="color:var(--ink);word-break:break-all">'+esc(L.email)+'</b> adresine 6 haneli bir kod gönderdik. Kod 5 dakika geçerlidir.</p><div class="field"><label for="f-otp">Doğrulama kodu</label><input id="f-otp" class="otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></div>'+(L.purpose==='giris'?'<label class="check"><input type="checkbox" id="f-trust" checked><span>Bu cihazı 30 gün hatırla. Paylaşılan bir bilgisayardaysanız işareti kaldırın.</span></label>':'')+'<div class="acts"><button class="btn" type="submit">Doğrula</button><button type="button" class="btn quiet sm" data-act="resend">Kodu yeniden gönder</button><button type="button" class="btn quiet sm" data-act="changeEmail">Vazgeç</button></div></form>';
   }else if(step==='setpw'){
-    f='<form class="form" data-form="setpw" novalidate>'+msg+'<p style="margin:0;font-size:14px;color:var(--ink70)">Adresiniz doğrulandı. Şimdi '+(L.purpose==='sifirlama'?'yeni':'kendi')+' şifrenizi belirleyin.</p><div class="field"><label for="f-np">Yeni şifre</label><input id="f-np" type="password" autocomplete="new-password" required><div class="meter" id="meter"><i></i><i></i><i></i><i></i></div></div><ul class="rules" id="rules"><li data-r="len">En az 10 karakter</li><li data-r="mix">Harf ve rakam birlikte</li><li data-r="case">Büyük ve küçük harf</li><li data-r="mail">E-posta adınızı içermiyor</li></ul><div class="field"><label for="f-np2">Şifre tekrar</label><input id="f-np2" type="password" autocomplete="new-password" required></div><label class="check"><input type="checkbox" id="f-trust" checked><span>Bu cihazı 30 gün hatırla.</span></label><div class="acts"><button class="btn" type="submit">Şifreyi kaydet ve giriş yap</button></div></form>';
+    f='<form class="form" data-form="setpw" novalidate>'+msg+'<p style="margin:0;font-size:14px;color:var(--ink70)">Adresiniz doğrulandı. Şimdi '+(L.purpose==='sifirlama'?'yeni':'kendi')+' şifrenizi belirleyin.</p><div class="field"><label for="f-np">Yeni şifre</label><input id="f-np" type="password" autocomplete="new-password" required><div class="meter" id="meter"><i></i><i></i><i></i><i></i></div></div><ul class="rules" id="rules"><li data-r="len">En az 10 karakter</li><li data-r="mix">Harf ve rakam birlikte</li><li data-r="case">Büyük ve küçük harf</li><li data-r="mail">E-posta adınızı içermiyor</li></ul><div class="field"><label for="f-np2">Şifre tekrar</label><input id="f-np2" type="password" autocomplete="new-password" required></div>'+(L.purpose==='aktivasyon'?consentBlock('s',null):'')+'<label class="check"><input type="checkbox" id="f-trust" checked><span>Bu cihazı 30 gün hatırla.</span></label><div class="acts"><button class="btn" type="submit">Şifreyi kaydet ve giriş yap</button></div></form>';
   }
   var h=masthead('Çalışan girişi','Derimod TalentX’e giriş','Tanımlı e-posta adresiniz ve kendi belirlediğiniz şifreyle giriş yapın.');
   h+='<div class="wrap"><div class="auth"><div class="panel">'+stepsH+f+'</div>';
@@ -1242,7 +1248,7 @@ V.profil=function(){
   h+='<section class="panel"><h3>Kişisel bilgiler</h3><p class="ph">İletişim bilgilerin yalnızca işe alım sürecinde kullanılır.</p><div class="f2">'+
     fld('Ad soyad',txt('name',u.name))+fld('E-posta','<input type="email" value="'+esc(u.email)+'" disabled>')+fld('Kullanıcı ID','<input type="text" value="'+esc(u.uid||'')+(u.uidTemp?' (geçici)':'')+'" disabled aria-describedby="uid-h"><span class="hint" id="uid-h">'+(isEmp(u)?'Sicil numaranla eşleşir.':'Başvurularında seni tanımlayan numara.')+'</span>')+
     fld('Telefon',txt('phone',p.phone,'05xx xxx xx xx','tel'))+fld('Yaşadığın şehir',selO('city',ILLER,p.city,'Şehir seç'))+
-    fld('LinkedIn profili (isteğe bağlı)',txt('linkedin',p.linkedin,'https://www.linkedin.com/in/…'),true)+'</div></section>';
+    fld('LinkedIn profili (isteğe bağlı)',txt('linkedin',p.linkedin,'https://www.linkedin.com/in/…'),true)+'</div></section>'+consentList(u);
   // cv
   h+='<section class="panel"><h3>Özgeçmiş</h3><p class="ph">PDF, DOC ya da DOCX · en fazla 5 MB.</p>'+
     (p.cv?'<div class="cvrow"><span class="cvic" aria-hidden="true">'+esc((p.cv.name.split('.').pop()||'').toUpperCase().slice(0,4))+'</span><div style="min-width:0"><b style="word-break:break-all">'+esc(p.cv.name)+'</b><span>'+Math.max(1,Math.round(p.cv.size/1024))+' KB · '+dt(p.cv.at)+' yüklendi</span></div><label class="btn ghost sm" for="cvfile">Değiştir</label><button class="btn quiet sm" data-act="cvDel">Kaldır</button></div>':
@@ -2470,6 +2476,95 @@ function mlClick(act,b){
   return false;
 }
 
+/* ================= ÜYELİK SÖZLEŞMESİ VE AÇIK RIZA ================= */
+// Metin değiştiğinde CN.v artırılır; kullanıcılardan yeniden onay istenir.
+var CN={v:'2026-11-1',docs:[
+  {k:'uyelik',req:true,
+    title:{tr:'Derimod TalentX Üyelik Sözleşmesi',en:'Derimod TalentX Membership Agreement'},
+    lab:{tr:'Üyelik Sözleşmesi’ni okudum ve kabul ediyorum.',en:'I have read and accept the Membership Agreement.'},
+    body:{tr:[
+      ['1. Taraflar ve konu','Bu sözleşme, Derimod (“Şirket”) tarafından işletilen Derimod TalentX platformuna (“Platform”) üye olan kişi (“Üye”) ile Şirket arasında, Platform’un kullanım koşullarını belirler. Üye, hesabını oluşturarak ya da etkinleştirerek bu sözleşmeyi elektronik ortamda kabul etmiş olur.'],
+      ['2. Platform’un amacı','Platform; açık pozisyonların duyurulması, yetenek profili oluşturulması, iş başvurularının alınması ve değerlendirilmesi, çalışanlar için kariyer ve gelişim süreçlerinin (potansiyel değerlendirmesi dahil) yürütülmesi ve çalışan deneyimine ilişkin içeriklerin paylaşılması amacıyla kullanılır.'],
+      ['3. Üyelik ve hesap güvenliği','Üyelik kişiseldir ve devredilemez. Üye; şifresini ve e-posta adresine gönderilen doğrulama kodlarını gizli tutmak, hesabı üzerinden yapılan işlemlerden sorumlu olmak ve yetkisiz kullanım şüphesinde şifresini değiştirerek İnsan ve Kültür ekibine bildirmekle yükümlüdür.'],
+      ['4. Bilgilerin doğruluğu','Üye, yetenek profilinde, özgeçmişinde ve başvurularında paylaştığı bilgilerin doğru, güncel ve kendisine ait olduğunu kabul eder. Gerçeğe aykırı bilgi, başvurunun değerlendirme dışı bırakılmasına ve üyeliğin sona erdirilmesine neden olabilir.'],
+      ['5. Kullanım kuralları','Üye; Platform’u hukuka, genel ahlaka ve Derimod değerlerine aykırı amaçlarla kullanamaz, başka kişilerin hesaplarına erişmeye ya da sistemin güvenliğini ve işleyişini bozmaya yönelik girişimde bulunamaz, çalışanlara özel içerikleri izinsiz olarak üçüncü kişilerle paylaşamaz.'],
+      ['6. Gizlilik ve fikri mülkiyet','Platform’daki ilanlar, içerikler, tasarımlar ve markalar Şirket’e aittir. Çalışanlara özel içerikler Şirket’in gizli bilgisi niteliğindedir ve yalnızca Platform içinde kullanılabilir.'],
+      ['7. Kişisel veriler','Üye’nin kişisel verileri 6698 sayılı Kişisel Verilerin Korunması Kanunu ve ilgili mevzuata uygun olarak, Aydınlatma Metni ve Üye’nin verdiği açık rızalar çerçevesinde işlenir. Üye açık rızasını dilediği zaman İnsan ve Kültür ekibine başvurarak geri alabilir; bu durumda rızaya dayalı işlemler durdurulur ve Platform’un ilgili bölümlerinin kullanımı mümkün olmayabilir.'],
+      ['8. Değişiklik ve sona erme','Şirket, Platform’un kapsamını ve bu sözleşmeyi değiştirebilir; değişiklikler Platform’da duyurulur ve gerektiğinde yeniden onay istenir. Üye üyeliğini dilediği zaman sona erdirebilir. Şirket, sözleşmeye aykırılık hâlinde üyeliği askıya alabilir ya da sona erdirebilir.'],
+      ['9. Uygulanacak hukuk','Bu sözleşmeye Türkiye Cumhuriyeti hukuku uygulanır.']],
+    en:[
+      ['1. Parties and scope','This agreement sets out the terms of use of the Derimod TalentX platform (the “Platform”), operated by Derimod (the “Company”), between the Company and the person who becomes a member of the Platform (the “Member”). By creating or activating an account, the Member accepts this agreement electronically.'],
+      ['2. Purpose of the Platform','The Platform is used to announce open positions, create talent profiles, receive and evaluate job applications, run career and development processes for employees (including potential review), and share content related to the employee experience.'],
+      ['3. Membership and account security','Membership is personal and non-transferable. The Member must keep their password and the verification codes sent to their e-mail address confidential, is responsible for all actions taken through their account, and must change their password and notify the People and Culture team if unauthorised use is suspected.'],
+      ['4. Accuracy of information','The Member confirms that the information shared in their talent profile, CV and applications is accurate, up to date and their own. Untrue information may lead to the application being excluded from evaluation and the membership being terminated.'],
+      ['5. Rules of use','The Member may not use the Platform for purposes contrary to law, public morality or Derimod’s values; may not attempt to access other people’s accounts or to compromise the security and operation of the system; and may not share employee-only content with third parties without permission.'],
+      ['6. Confidentiality and intellectual property','Job postings, content, designs and trademarks on the Platform belong to the Company. Employee-only content is confidential information of the Company and may be used only within the Platform.'],
+      ['7. Personal data','The Member’s personal data is processed in accordance with the Turkish Personal Data Protection Law No. 6698 and related legislation, within the scope of the Privacy Notice and the explicit consents given by the Member. The Member may withdraw their explicit consent at any time by contacting the People and Culture team; in that case, processing based on consent is stopped and some parts of the Platform may no longer be available.'],
+      ['8. Changes and termination','The Company may change the scope of the Platform and this agreement; changes are announced on the Platform and renewed consent is requested where necessary. The Member may end their membership at any time. The Company may suspend or terminate the membership in case of breach of this agreement.'],
+      ['9. Governing law','This agreement is governed by the laws of the Republic of Türkiye.']]}},
+  {k:'riza_isleme',req:true,
+    title:{tr:'Kişisel Verilerin İşlenmesine İlişkin Açık Rıza Metni',en:'Explicit Consent to the Processing of Personal Data'},
+    lab:{tr:'Kişisel verilerimin işlenmesine ilişkin Açık Rıza Metni’ni okudum, açık rıza veriyorum.',en:'I have read the Explicit Consent text on the processing of my personal data and give my explicit consent.'},
+    body:{tr:[
+      ['','6698 sayılı Kişisel Verilerin Korunması Kanunu (“KVKK”) uyarınca; adım soyadım, ikâmet adresim, telefon numaralarım, iş deneyimlerim, mezun olduğum eğitim kurumları, doğum yerim ve doğum tarihim de dahil olmak üzere gerek online ortam vasıtasıyla, gerek yazılı olarak, gerekse yüz yüze veya telefonla yapılan mülakatlar neticesinde Derimod’a ibraz ettiğim özgeçmişimle ilgili her türlü bilginin “kişisel veri” teşkil ettiğinin bilincindeyim.'],
+      ['','Kişisel bilgilerimin/verilerimin KVKK’da açıklandığı çerçevede; tamamen veya kısmen otomatik olan ya da olmayan yollarla elde edilmesine, kaydedilmesine, depolanmasına, değiştirilmesine, yeniden düzenlenmesine, saklanmasına, güncellenmesine, mevzuatın izin verdiği durumlarda üçüncü kişilere açıklanmasına, devralınmasına, elde edilebilir hâle getirilmesine, sınıflandırılmasına ya da kullanılmasının engellenmesine, KVKK’da sayılan şekillerde işlenmesine, yurt içindeki veya yurt dışındaki ana ortak, bağlı ortaklık, iştirak ve temsilcilikleri de dahil gerçek ve tüzel kişilere aktarılmasına ve veriler üzerinde her türlü işlemin gerçekleştirilmesine açıkça rızam ve muvafakatim vardır.'],
+      ['','Bu rızamı dilediğim zaman İnsan ve Kültür ekibine başvurarak geri alabileceğimi biliyorum.']],
+    en:[
+      ['','Pursuant to the Turkish Personal Data Protection Law No. 6698 (“KVKK”), I am aware that all information relating to my CV that I submit to Derimod, whether online, in writing, or as a result of face-to-face or telephone interviews, including my name and surname, residential address, telephone numbers, work experience, the educational institutions I graduated from, my place of birth and date of birth, constitutes “personal data”.'],
+      ['','Within the framework set out in the KVKK, I explicitly consent and agree to my personal information/data being obtained, recorded, stored, modified, reorganised, retained, updated, disclosed to third parties where permitted by law, taken over, made available, classified or blocked from use, by wholly or partly automated or non-automated means; being processed in the ways listed in the KVKK; being transferred to natural and legal persons in Türkiye or abroad, including Derimod’s parent company, subsidiaries, affiliates and representative offices; and to any other operation being carried out on the data.'],
+      ['','I know that I may withdraw this consent at any time by contacting the People and Culture team.']]}},
+  {k:'riza_aktarim',req:true,
+    title:{tr:'Hizmet Sağlayıcılar ve Veri Barındırma Açık Rıza Metni',en:'Explicit Consent: Service Providers and Data Hosting'},
+    lab:{tr:'Hizmet sağlayıcılar ve veri barındırmaya ilişkin Açık Rıza Metni’ni okudum, yurt dışına aktarım dahil açık rıza veriyorum.',en:'I have read the Explicit Consent text on service providers and data hosting and give my explicit consent, including to transfer abroad.'},
+    body:{tr:[
+      ['','Derimod TalentX platformunda paylaştığım kişisel verilerimin (kimlik ve iletişim bilgilerim, özgeçmişim, eğitim ve iş deneyimi bilgilerim, yetenek profilim, başvuru ve değerlendirme kayıtlarım dahil); platformun işletilmesi, verilerin güvenli biçimde saklanması ve yedeklenmesi ile bildirim ve doğrulama e-postalarının gönderilmesi amaçlarıyla, Derimod’un bilgi teknolojileri hizmet sağlayıcıları ve veri barındırma hizmeti aldığı şirketler (Microsoft Azure bulut altyapısı ve e-posta gönderim hizmetleri dahil) tarafından işlenmesine açık rızam vardır.'],
+      ['','Bu amaçla kişisel verilerimin, söz konusu hizmet sağlayıcıların yurt dışında (Avrupa Ekonomik Alanı dahil) bulunan sunucularına aktarılmasına ve orada saklanmasına KVKK’nın 9. maddesi kapsamında açık rızam vardır.'],
+      ['','Bu rızamı dilediğim zaman İnsan ve Kültür ekibine başvurarak geri alabileceğimi; geri almanın, geri alma tarihinden önce yapılan işlemleri etkilemeyeceğini biliyorum.']],
+    en:[
+      ['','I give my explicit consent to my personal data shared on the Derimod TalentX platform (including my identity and contact details, CV, education and work experience, talent profile, and application and evaluation records) being processed by Derimod’s information technology service providers and data hosting companies (including the Microsoft Azure cloud infrastructure and e-mail delivery services) for the purposes of operating the platform, storing and backing up data securely, and sending notification and verification e-mails.'],
+      ['','For these purposes, I give my explicit consent under Article 9 of the KVKK to my personal data being transferred to and stored on servers of these service providers located abroad (including in the European Economic Area).'],
+      ['','I know that I may withdraw this consent at any time by contacting the People and Culture team, and that withdrawal does not affect processing carried out before the date of withdrawal.']]}}
+]};
+S.clang=S.clang||'tr';S.cnChk=S.cnChk||{};
+function cnOk(u,k){var c=u&&u.consents&&u.consents[k];return !!(c&&c.v===CN.v)}
+function needsConsent(u){return !!u&&CN.docs.some(function(d){return d.req&&!cnOk(u,d.k)})}
+function cnLangSeg(){return '<div class="seg cnseg" role="group" aria-label="Metin dili"><button type="button" data-act="cnLang" data-l="tr" aria-pressed="'+(S.clang==='tr')+'">Türkçe</button><button type="button" data-act="cnLang" data-l="en" aria-pressed="'+(S.clang==='en')+'">English</button></div>'}
+function consentBlock(pre,u){
+  var L=S.clang;
+  return '<div class="cnb"><div class="cnb-hd"><span class="lab">'+(L==='en'?'Agreements and consents':'Sözleşme ve onaylar')+'</span>'+cnLangSeg()+'</div>'+CN.docs.map(function(d){var on=S.cnChk[d.k]||cnOk(u,d.k);
+    return '<label class="check cnl"><input type="checkbox" id="'+pre+'-cn-'+d.k+'" data-cn="'+d.k+'"'+(on?' checked':'')+'><span><span data-cnlab="'+d.k+'">'+esc(d.lab[L])+'</span> <button type="button" class="linkbtn cnread" data-act="cnRead" data-k="'+d.k+'">'+(L==='en'?'Read':'Metni oku')+'</button></span></label>'}).join('')+'</div>';
+}
+function cnCollect(pre){var o={},all=true;CN.docs.forEach(function(d){var el=document.getElementById(pre+'-cn-'+d.k);if(el&&el.checked)o[d.k]=S.clang;else if(d.req)all=false});return {map:o,all:all}}
+function cnApply(u,map){S.cnChk={};if(!u)return;u.consents=u.consents||{};Object.keys(map).forEach(function(k){if(!cnOk(u,k)){u.consents[k]={v:CN.v,at:Date.now(),lang:map[k]==='en'?'en':'tr'}}})}
+function cnRefreshLang(){var L=S.clang;document.querySelectorAll('[data-cnlab]').forEach(function(el){var d=CN.docs.filter(function(x){return x.k===el.getAttribute('data-cnlab')})[0];if(d)el.textContent=d.lab[L]});document.querySelectorAll('.cnread').forEach(function(b){b.textContent=L==='en'?'Read':'Metni oku'});document.querySelectorAll('.cnseg button').forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-l')===L))});document.querySelectorAll('.cnb-hd .lab').forEach(function(x){x.textContent=L==='en'?'Agreements and consents':'Sözleşme ve onaylar'})}
+function consentDrawer(){
+  var d=CN.docs.filter(function(x){return x.k===S.cdoc})[0];if(!d)return '';var L=S.clang;
+  return '<div class="dback" data-act="cnClose"></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="'+esc(d.title[L])+'"><div class="dhd"><div style="min-width:0"><div class="eyebrow">'+(L==='en'?'Version':'Sürüm')+' '+CN.v+'</div><h2>'+esc(d.title[L])+'</h2></div><div class="dnav"><button class="x" data-act="cnClose" aria-label="Kapat">×</button></div></div><div class="dbody">'+
+    '<div style="padding-top:14px">'+cnLangSeg()+'</div><div class="cntext" lang="'+L+'">'+d.body[L].map(function(p){return (p[0]?'<h3>'+esc(p[0])+'</h3>':'')+'<p>'+esc(p[1])+'</p>'}).join('')+'</div>'+
+    '<div style="margin-top:18px"><button class="btn" data-act="cnClose">'+(L==='en'?'Close':'Kapat')+'</button></div></div></aside>';
+}
+V.onay=function(){
+  var u=me(),any=u&&u.consents&&Object.keys(u.consents).length,L=S.clang;
+  var h=masthead(L==='en'?'Consents':'Onaylar',L==='en'?'Before you continue':'Devam etmeden önce',L==='en'?'To use Derimod TalentX, please read and accept the texts below.':(any?'Sözleşme ve onay metinlerimiz güncellendi. Devam etmek için güncel metinleri okuyup onaylaman gerekiyor.':'Derimod TalentX’i kullanabilmek için aşağıdaki metinleri okuyup onaylaman gerekiyor.'));
+  h+='<div class="wrap"><div class="panel" style="max-width:760px;margin-top:28px">'+(S.cnErr?'<div class="msg err" role="alert" style="margin-bottom:14px">'+S.cnErr+'</div>':'')+consentBlock('g',u)+
+    '<div class="acts" style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap"><button class="btn" data-act="cnAccept">'+(L==='en'?'Accept and continue':'Onayla ve devam et')+'</button><button class="btn quiet sm" data-act="logout">'+(L==='en'?'Sign out':'Çıkış yap')+'</button></div></div></div>';
+  return h;
+};
+function consentList(u){
+  var L=S.clang;
+  return '<section class="panel"><h3>Onaylarım</h3><p class="ph">Verdiğin onaylar ve tarihleri. Bir açık rızayı geri almak için İnsan ve Kültür ekibine başvurabilirsin.</p>'+
+    CN.docs.map(function(d){var c=u.consents&&u.consents[d.k];return '<div class="dl2"><span class="lab">'+(c?dt(c.at).split(' ')[0]:'—')+'</span><div>'+esc(d.title.tr)+' <span class="em">· '+(c?(c.v===CN.v?'Sürüm '+c.v+(c.lang==='en'?' · English':''):'Eski sürüm'):'Onay yok')+'</span> <button type="button" class="linkbtn cnread" data-act="cnRead" data-k="'+d.k+'" style="text-decoration:underline">Metni oku</button></div></div>'}).join('')+'</section>';
+}
+function consentPill(u){if(needsConsent(u)){var any=u.consents&&Object.keys(u.consents).length;return '<div class="em" style="margin-top:4px">'+(any?'Onay yenilenmeli':'Onay bekliyor')+'</div>'}var t=Math.max.apply(null,CN.docs.map(function(d){return u.consents[d.k].at}));return '<div class="em" style="margin-top:4px">Onay: '+dt(t).split(' ')[0]+'</div>'}
+function cnClick(act,b){
+  if(act==='cnRead'){S.cdoc=b.getAttribute('data-k');var dr=document.getElementById('drawer');dr.innerHTML=consentDrawer();document.body.classList.add('noscroll');return true}
+  if(act==='cnClose'){S.cdoc=null;document.getElementById('drawer').innerHTML='';document.body.classList.remove('noscroll');return true}
+  if(act==='cnLang'){S.clang=b.getAttribute('data-l')==='en'?'en':'tr';cnRefreshLang();if(S.cdoc)document.getElementById('drawer').innerHTML=consentDrawer();if(S.page==='onay'||(me()&&needsConsent(me())))render();return true}
+  if(act==='cnAccept'){var u=me();if(!u)return true;var c=cnCollect('g');if(!c.all){S.cnErr=S.clang==='en'?'Please tick all boxes to continue.':'Devam etmek için tüm kutuları işaretle.';render();return true}
+    S.cnErr='';cnApply(u,c.map);log(u.email,'Onaylar verildi · sürüm '+CN.v);save();S.cnChk={};render();window.scrollTo(0,0);return true}
+  return false;
+}
+
 /* ================= ROLLER VE YETKİLER ================= */
 var AROLES=[
   {k:'exec',n:'Executive Admin',s:'Tüm sistem',d:'Sistemin tamamından sorumludur: rol atama, kullanıcılar, ilanlar, başvurular, analitik erişim tanımları ve sistem ayarları. “Tüm birimler” analitik erişimini yalnızca bu rol verir.'},
@@ -2542,7 +2637,7 @@ function usersTab(){
       '<button class="btn ghost sm" data-act="remove" data-e="'+e+'"'+(locked?' disabled':'')+'>Kaldır</button>';
     h+='<tr><td style="min-width:110px">'+uidCell(u,can('users')&&!(u.arole==='exec'&&!mex))+'</td><td style="min-width:210px"><div class="nm">'+esc(u.name)+(isSelf?' <span class="pill pv">Siz</span>':'')+'</div><div class="em">'+e+'</div></td><td style="font-family:var(--f-body)">'+esc(u.dept)+'</td>'+
       '<td>'+typeSel(u,locked||!!u.arole)+'</td><td>'+aroleSel(u,locked||!can('roles'))+'</td><td style="white-space:normal;min-width:150px">'+blSummary(u)+'</td>'+
-      '<td style="font-family:var(--f-body);font-size:12.5px;color:var(--ink50)">'+(u.src==='kayit'?'Kendi kaydı':'Yönetici ekledi')+'</td><td>'+statusPill(u)+'</td><td>'+dt(u.lastLogin)+'</td><td class="acts">'+acts+'</td></tr>';
+      '<td style="font-family:var(--f-body);font-size:12.5px;color:var(--ink50)">'+(u.src==='kayit'?'Kendi kaydı':'Yönetici ekledi')+'</td><td>'+statusPill(u)+consentPill(u)+'</td><td>'+dt(u.lastLogin)+'</td><td class="acts">'+acts+'</td></tr>';
   });
   h+='</tbody></table></div>';
   if(can('audit'))h+='<h2 class="sec">Erişim kayıtları</h2><p class="secnote">Son 25 olay.</p><div class="tscroll"><table class="log"><thead><tr><th>Zaman</th><th>Kullanıcı</th><th>Olay</th><th>İşlemi yapan</th></tr></thead><tbody>'+
@@ -2593,9 +2688,10 @@ function render(){
   var p=pageById(S.page);
   applyTheme(S.page==='giris'?C.mor:(S.page==='yetkisiz'?C.ink70:(S.page==='yonetim'&&S.adm.tab==='talent'?C.mor:(p?p.color:C.mor))));
   renderChrome();
-  var fn=V[S.page]||V.anasayfa;
+  var gate=!!(me()&&needsConsent(me()));
+  var fn=gate?V.onay:(V[S.page]||V.anasayfa);
   document.getElementById('app').innerHTML=fn();
-  var dopen=S.page==='yonetim'&&S.adm.tab==='ats'&&S.ats&&S.ats.open,topen=S.page==='yonetim'&&S.adm.tab==='talent'&&S.tal&&S.tal.open;var mopen=!dopen&&!topen&&!!S.mv;document.getElementById('drawer').innerHTML=dopen?drawerHTML():(topen?talentDrawer():(mopen?mailViewer():''));if(mopen)mvMount();dopen=dopen||topen||mopen;document.body.classList.toggle('noscroll',!!(dopen&&document.querySelector('.drawer')));
+  var dopen=S.page==='yonetim'&&S.adm.tab==='ats'&&S.ats&&S.ats.open,topen=S.page==='yonetim'&&S.adm.tab==='talent'&&S.tal&&S.tal.open;var copen=!!S.cdoc;if(copen){dopen=false;topen=false}var mopen=!copen&&!dopen&&!topen&&!!S.mv;document.getElementById('drawer').innerHTML=copen?consentDrawer():(dopen?drawerHTML():(topen?talentDrawer():(mopen?mailViewer():'')));if(mopen)mvMount();dopen=dopen||topen||mopen||copen;document.body.classList.toggle('noscroll',!!(dopen&&document.querySelector('.drawer')));
   if(S.page==='yonetim'&&S.adm.tab==='ats'&&S.ats&&S.ats.view==='board')atsDrag();
   renderInbox();
   if(S.page==='giris'){var i=document.querySelector('#app form input:not([type=checkbox])');if(i)try{i.focus({preventScroll:true})}catch(e){}}
@@ -2656,10 +2752,10 @@ async function onSubmit(form){
     var re=document.getElementById('r-email').value.trim().toLowerCase(),rn=document.getElementById('r-name').value.trim();L.email=re;
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(re)){L.err='Geçerli bir e-posta adresi yaz.';return render()}
     if(!rn){L.err='Ad soyad gerekli.';return render()}
-    if(!document.getElementById('r-kvkk').checked){L.err='Devam etmek için KVKK onayını işaretle.';return render()}
+    var rc=cnCollect('r');if(!rc.all){L.err='Devam etmek için sözleşme ve onay kutularının hepsini işaretle.';return render()}
     var ex=find(re);
     if(ex&&ex.pw){L.err='Bu adresle bir hesap zaten var. Giriş yap ya da şifreni sıfırla.';L.step='email';return render()}
-    if(!ex){DB.users.push({email:re,name:rn,dept:'Dış aday',role:'aday',status:'davetli',pw:null,created:Date.now(),lastLogin:null,fails:0,lockUntil:0,trusted:[],src:'kayit',prep:{}});uidSync();log(re,'Aday kaydı başlatıldı',re)}
+    if(!ex){DB.users.push({email:re,name:rn,dept:'Dış aday',role:'aday',status:'davetli',pw:null,created:Date.now(),lastLogin:null,fails:0,lockUntil:0,trusted:[],src:'kayit',prep:{}});uidSync();log(re,'Aday kaydı başlatıldı',re)}cnApply(find(re),rc.map);
     sendCode(re,'kayit');save();return render();
   }
   if(kind==='otp'){
@@ -2679,6 +2775,7 @@ async function onSubmit(form){
     if(!(r.len&&r.mix&&r['case']&&r.mail)){L.err='Şifre kuralların hepsini karşılamalı.';return render()}
     if(p1!==p2){L.err='İki şifre aynı değil.';return render()}
     var salt=randHex(16);u4.pw={salt:salt,hash:await hashPw(p1,salt),set:Date.now()};
+    var sc=cnCollect('s');if(L.purpose==='aktivasyon'&&!sc.all){L.err='Devam etmek için sözleşme ve onay kutularının hepsini işaretle.';return render()}cnApply(u4,sc.map);
     var wasInvite=u4.status==='davetli';u4.status='aktif';
     if(L.purpose==='sifirlama'||(!wasInvite&&L.purpose!=='kayit'))mailSend('sifre',u4.email,{name:u4.name,at:Date.now()});else mailSend('hosgeldin',u4.email,mailUserData(u4));
     log(u4.email,L.purpose==='kayit'?'Aday hesabı oluşturuldu':(wasInvite?'Hesap etkinleştirildi · şifre belirlendi':'Şifre yenilendi'),u4.email);
@@ -2804,7 +2901,8 @@ document.addEventListener('click',function(ev){
   var b=ev.target.closest('[data-act]');if(!b||b.tagName==='SELECT')return;
   var act=b.getAttribute('data-act'),e=b.getAttribute('data-e'),u=e?find(e):null,A2=S.adm;
   if(act==='toLogin'){S.returnTo=null;resetLogin();return}
-  if(act==='logout'){var m=me();if(m)log(m.email,'Çıkış yapıldı',m.email);DB.session=null;S.adm={q:'',err:'',ok:'',confirm:null,confirmReset:false,tab:'users',jconfirm:null,draft:null,rf:'',openApp:null};S.k={tab:null,open:null,err:'',ok:'',ans:{},kvkk:false};S.cvx=null;S.cvFile=null;S.ats=null;S.tal=null;S.mv=null;if(SERVER){api('auth/logout',{}).then(function(r){applyState(r.state);go('anasayfa');render()});return}save();go('anasayfa');return}
+  if(act==='logout'){var m=me();if(m)log(m.email,'Çıkış yapıldı',m.email);DB.session=null;S.adm={q:'',err:'',ok:'',confirm:null,confirmReset:false,tab:'users',jconfirm:null,draft:null,rf:'',openApp:null};S.k={tab:null,open:null,err:'',ok:'',ans:{},kvkk:false};S.cvx=null;S.cvFile=null;S.ats=null;S.tal=null;S.mv=null;S.cnChk={};S.cdoc=null;if(SERVER){api('auth/logout',{}).then(function(r){applyState(r.state);go('anasayfa');render()});return}save();go('anasayfa');return}
+  if(/^cn[A-Z]/.test(act)&&cnClick(act,b))return;
   if(/^ml[A-Z]/.test(act)&&mlClick(act,b))return;
   if(act==='closeInbox'){S.inboxOpen=false;renderInbox();return}
   if(SERVER&&(act==='forgot'||act==='resend')){srvClick(act);return}
@@ -2894,6 +2992,7 @@ document.addEventListener('click',function(ev){
 });
 document.addEventListener('change',function(ev){
   var s=ev.target,act=s.getAttribute('data-act');
+  if(s.hasAttribute('data-cn')){S.cnChk[s.getAttribute('data-cn')]=s.checked;return}
   if(s.id==='cvfile'){cvUpload(s);return}
   if(act==='hmAdd'&&can('jobs')&&S.adm.draft){if(s.value&&S.adm.draft.hms.indexOf(s.value)<0)S.adm.draft.hms.push(s.value);render();return}
   if(act==='atsCritAdd'&&can('jobs')&&S.ats){var cj=jobById(S.ats.job);if(!cj||!s.value)return;cj.crit=cj.crit?cj.crit:JSON.parse(JSON.stringify(jobCrit(cj)));var ck=s.getAttribute('data-kind')==='s'?'skills':'comps';if(cj.crit[ck].indexOf(s.value)<0)cj.crit[ck].push(s.value);cj.crit.src='manual';cj.crit.at=Date.now();log(me().email,'İlan kriterleri düzenlendi · '+cj.title);save();render();return}
