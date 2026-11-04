@@ -56,6 +56,11 @@ async function sendCode(C, db, email, purpose) {
   return { sent: r.st, dev: process.env.DEV_SHOW_CODES === '1' ? code : undefined };
 }
 
+function reqMeta(req, via) {
+  const h = (k) => String(req.headers.get(k) || '');
+  const ip = (h('x-azure-clientip') || h('x-client-ip') || h('x-forwarded-for').split(',')[0] || '').trim().replace(/:\d+$/, '');
+  return { via, ip: ip.slice(0, 64), ua: h('user-agent').slice(0, 300) };
+}
 function rules(C, pw, email) { const r = C.pwRules(pw, email); return r.len && r.mix && r['case'] && r.mail; }
 
 // İstek gövdesine göre adımı yürütür. Dönüş: { ok, step, purpose, err, info, token, dev, login }
@@ -90,7 +95,7 @@ async function handle(op, body, req, res, C, db) {
     if (u && cred && cred.hash) return { err: 'Bu adresle bir hesap zaten var. Giriş yap ya da şifreni sıfırla.', step: 'email' };
     if (u && u.status === 'askida') return { err: 'Hesabınız askıya alınmış. İnsan ve Kültür ekibiyle görüşün.' };
     if (!u) { db.users.push({ email, name, dept: 'Dış aday', role: 'aday', arole: '', bl: [], status: 'davetli', created: Date.now(), lastLogin: null, src: 'kayit', prep: {} }); C.uidSync(); audit('Aday kaydı başlatıldı'); }
-    { const nu = db.users.find((x) => x.email === email); C.DB = db; require('./sync').setConsents(C, nu, cs, (k) => cs[k]); }
+    { const nu = db.users.find((x) => x.email === email); C.DB = db; require('./sync').setConsents(C, nu, cs, (k) => cs[k], reqMeta(req, 'aday-kaydi')); }
     const r = await sendCode(C, db, email, 'kayit');
     return { step: 'otp', purpose: 'kayit', wait: r.wait, dev: r.dev };
   }
@@ -154,7 +159,7 @@ async function handle(op, body, req, res, C, db) {
     if (body.trust) nc.trusted.push({ device: H(dev), until: Date.now() + TRUST_TTL });
     await st.put('cred', email, nc);
     o.used = true; await st.put('otp', email, o);
-    if (body.consents && typeof body.consents === 'object') { C.DB = db; require('./sync').setConsents(C, u, body.consents, (k) => body.consents[k]); }
+    if (body.consents && typeof body.consents === 'object') { C.DB = db; require('./sync').setConsents(C, u, body.consents, (k) => body.consents[k], reqMeta(req, 'hesap-etkinlestirme')); }
     const wasInvite = u.status === 'davetli';
     u.status = 'aktif'; u.hasPw = true; u.lastLogin = Date.now();
     audit(o.purpose === 'kayit' ? 'Aday hesabı oluşturuldu' : (wasInvite ? 'Hesap etkinleştirildi · şifre belirlendi' : 'Şifre yenilendi'));
@@ -168,4 +173,4 @@ async function handle(op, body, req, res, C, db) {
   return { err: 'Bilinmeyen işlem.' };
 }
 
-module.exports = { handle, session, killSessions, cookies, ck };
+module.exports = { handle, session, killSessions, cookies, ck, reqMeta };

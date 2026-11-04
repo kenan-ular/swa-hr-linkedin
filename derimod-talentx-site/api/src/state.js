@@ -67,6 +67,10 @@ async function persist(before, db) {
   (db.outbox || []).forEach((m) => {
     if (!before.outbox.has(m.id)) { if (!m.st) m.st = 'kuyrukta'; ops.push(() => st.put('outbox', m.rk || (m.rk = inv(m.at)), clone(m))); }
   });
+  // onay kayıtları: yalnızca eklenir, hiçbir zaman değiştirilmez
+  (db._cnrec || []).forEach((r) => ops.push(() => st.put('consent', inv(r.at), r)));
+  Object.keys(db._cntext || {}).forEach((k) => ops.push(async () => { if (!(await st.get('cntext', k))) await st.put('cntext', k, db._cntext[k]); }));
+  db._cnrec = []; db._cntext = {};
   // sınırlı eşzamanlılıkla yaz
   const N = 8; let i = 0;
   await Promise.all(Array.from({ length: Math.min(N, ops.length) }, async () => { while (i < ops.length) { const f = ops[i++]; await f(); } }));
@@ -102,7 +106,7 @@ function bindCore(db, email) {
 function view(db, email) {
   const C = bindCore(db, email);
   const me = C.me();
-  const base = { users: [], jobs: [], apps: [], analytics: [], audit: [], outbox: [], mailCfg: {}, prList: [], talentDemo: [], session: null, device: 'server', blv2: 1, server: true, mailReady: mailer.configured() };
+  const base = { users: [], jobs: [], apps: [], analytics: [], audit: [], outbox: [], mailCfg: {}, prList: [], talentDemo: [], session: null, device: 'server', blv2: 1, server: true, mailReady: mailer.configured(), aiReady: require('./ai').configured() };
   if (!me) {
     base.jobs = clone(db.jobs.filter((j) => j.status === 'yayinda' && j.external));
     return base;

@@ -14,7 +14,7 @@ async function handler(req) {
   const res = { cookies: [] };
   try {
     const C = core();
-    if (path === 'health') return json(200, { ok: true, storage: stores().mem ? 'bellek (test)' : 'Azure Storage', mail: require('./mailer').configured() ? 'hazır' : 'yapılandırılmadı' });
+    if (path === 'health') return json(200, { ok: true, storage: stores().mem ? 'bellek (test)' : 'Azure Storage', mail: require('./mailer').configured() ? 'hazır' : 'yapılandırılmadı', ai: require('./ai').configured() ? 'hazır' : 'yapılandırılmadı' });
 
     const db = await loadDB();
     const before = snap(db);
@@ -49,14 +49,58 @@ async function handler(req) {
       const body = await readBody(req);
       const Cx = bindCore(db, email);
       const me = Cx.me();
-      const errs = sync.apply(Cx, db, me, body || {});
+      const errs = sync.apply(Cx, db, me, body || {}, auth.reqMeta(req, ''));
       sync.after(Cx, db, me);
       // askıya alınan / şifresi sıfırlanan kullanıcıların oturumlarını kapat
       const kill = db.users.filter((u) => u._kill || u._pwReset);
       for (const u of kill) { if (u._pwReset) await stores().db.del('cred', u.email); await auth.killSessions(u.email); delete u._kill; delete u._pwReset; }
+      // kaldırılan özgeçmişleri ve silinen kullanıcıların dosyalarını depodan da sil
+      for (const em of (db._cvDel || [])) await stores().blob.del(blobName(em));
+      db._cvDel = [];
       await persist(before, db);
       await drainMail(db, 25);
       return json(errs.length ? 403 : 200, { ok: !errs.length, err: errs.length ? errs[0] : undefined, errs, state: view(db, email) }, res.cookies);
+    }
+
+    if (path === 'consents' && req.method === 'GET') {
+      const Cx = bindCore(db, email);
+      if (!Cx.can('users') && !Cx.can('audit')) return json(403, { ok: false, err: 'Yetkin yok.' });
+      const recs = (await stores().db.list('consent')).map((x) => x.v).filter(Boolean);
+      Cx.log(email, 'Onay kayıtları dışa aktarıldı · ' + recs.length);
+      await persist(before, db);
+      return json(200, { ok: true, records: recs });
+    }
+
+    if (path === 'ai' && req.method === 'POST') {
+      const ai = require('./ai');
+      if (!ai.configured()) return json(503, { ok: false, err: 'Akıllı okuma henüz bağlı değil.' });
+      const body = await readBody(req);
+      const Cx = bindCore(db, email);
+      let prompt;
+      if (body.kind === 'cv') {
+        const text = String(body.text || '').slice(0, 40000);
+        if (text.replace(/\s/g, '').length < 80) return json(400, { ok: false, err: 'Metin bulunamadı.' });
+        prompt = Cx.cvPrompt(text);
+      } else if (body.kind === 'crit') {
+        if (!Cx.can('jobs')) return json(403, { ok: false, err: 'Yetkin yok.' });
+        const j = db.jobs.find((x) => x.id === body.jobId);
+        if (!j) return json(404, { ok: false, err: 'İlan bulunamadı.' });
+        prompt = Cx.critPrompt(j);
+      } else return json(400, { ok: false, err: 'Geçersiz istek.' });
+      // kişi başı günlük sınır
+      const day = new Date().toISOString().slice(0, 10), key = email + '|' + day, st = stores().db;
+      const lim = +(process.env.AI_DAILY_LIMIT || 20), cur = (await st.get('ailim', key)) || { n: 0 };
+      if (cur.n >= lim) return json(429, { ok: false, err: 'Bugünkü akıllı okuma hakkın doldu.' });
+      await st.put('ailim', key, { n: cur.n + 1, at: Date.now() });
+      try {
+        const result = await ai.json(prompt);
+        Cx.log(email, 'Akıllı okuma · ' + (body.kind === 'cv' ? 'özgeçmiş' : 'ilan kriterleri'));
+        await persist(before, db);
+        return json(200, { ok: true, result });
+      } catch (e) {
+        console.error(e);
+        return json(e.code === 429 ? 429 : 502, { ok: false, err: 'Akıllı okuma tamamlanamadı.' });
+      }
     }
 
     if (path === 'mail/remind' && req.method === 'POST') {
@@ -105,7 +149,7 @@ async function handler(req) {
       if (!ok) return json(403, { ok: false, err: 'Yetkin yok.' });
       const b = await stores().blob.get(blobName(who));
       if (!b) return json(404, { ok: false, err: 'Dosya bulunamadı.' });
-      return { status: 200, body: b.buf, headers: { 'Content-Type': b.type || 'application/pdf', 'Cache-Control': 'no-store', 'Content-Disposition': 'attachment; filename="ozgecmis.pdf"' } };
+      return { status: 200, body: b.buf, headers: { 'Content-Type': b.type || 'application/pdf', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': (req.query.get('inline') && /pdf/.test(b.type || '') ? 'inline' : 'attachment') + '; filename="ozgecmis' + (/pdf/.test(b.type || '') ? '.pdf' : /wordprocessingml/.test(b.type || '') ? '.docx' : '.doc') + '"' } };
     }
 
     return json(404, { ok: false, err: 'Bulunamadı.' });

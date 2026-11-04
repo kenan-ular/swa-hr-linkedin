@@ -15,17 +15,31 @@ function sanProfile(p) {
 }
 
 // Onaylar: yalnızca güncel sürüm kabul edilir; tarih sunucuda atanır
-function setConsents(C, u, src, langOf) {
+function setConsents(C, u, src, langOf, meta) {
+  const crypto = require('crypto');
   const got = [];
+  meta = meta || {};
   C.CN.docs.forEach((d) => {
     const has = u.consents && u.consents[d.k] && u.consents[d.k].v === C.CN.v;
     const want = src && src[d.k] && (typeof src[d.k] === 'string' || src[d.k].v === C.CN.v);
-    if (want && !has) { u.consents = u.consents || {}; const l = langOf(d.k) === 'en' ? 'en' : 'tr'; u.consents[d.k] = { v: C.CN.v, at: Date.now(), lang: l }; got.push(d.k); }
+    if (want && !has) {
+      u.consents = u.consents || {};
+      const l = langOf(d.k) === 'en' ? 'en' : 'tr', at = Date.now();
+      u.consents[d.k] = { v: C.CN.v, at, lang: l };
+      got.push(d.k);
+      const text = { k: d.k, v: C.CN.v, lang: l, title: d.title[l], body: d.body[l], entities: C.CN.entities || [] };
+      const hash = crypto.createHash('sha256').update(JSON.stringify(text)).digest('hex');
+      const db = C.DB;
+      db._cnrec = db._cnrec || [];
+      db._cnrec.push({ at, email: u.email, uid: u.uid || '', name: u.name || '', doc: d.k, title: d.title.tr, v: C.CN.v, lang: l, via: meta.via || '', ip: meta.ip || '', ua: meta.ua || '', hash });
+      db._cntext = db._cntext || {};
+      db._cntext[d.k + '|' + C.CN.v + '|' + l] = Object.assign({ hash }, text);
+    }
   });
   if (got.length) { u.consentLog = (u.consentLog || []).concat(got.map((k) => ({ k, v: C.CN.v, at: Date.now() }))).slice(-50); C.log(u.email, 'Onay verildi · ' + got.join(', ') + ' · sürüm ' + C.CN.v); }
 }
 
-function apply(C, db, me, d) {
+function apply(C, db, me, d, meta) {
   const errs = [];
   const deny = (m) => errs.push(m);
   const can = (p) => C.can(p, me);
@@ -57,9 +71,9 @@ function apply(C, db, me, d) {
     }
     if (email === me.email) {
       if (nu.name) cur.name = str(nu.name, 120);
-      if (nu.profile) { const p = sanProfile(nu.profile); if (p) cur.profile = p; }
+      if (nu.profile) { const p = sanProfile(nu.profile); if (p) { if (cur.profile && cur.profile.cv && cur.profile.cv.blob && !(p.cv && p.cv.blob)) db._cvDel = (db._cvDel || []).concat([cur.email]); cur.profile = p; } }
       if (nu.prep && typeof nu.prep === 'object') cur.prep = { yonetici: bool(nu.prep.yonetici), kurs: bool(nu.prep.kurs) };
-      if (nu.consents && typeof nu.consents === 'object') setConsents(C, cur, nu.consents, (k) => nu.consents[k] && nu.consents[k].lang);
+      if (nu.consents && typeof nu.consents === 'object') setConsents(C, cur, nu.consents, (k) => nu.consents[k] && nu.consents[k].lang, Object.assign({ via: 'onay-ekrani' }, meta || {}));
       return;
     }
     const adminAny = can('users') || can('type') || can('roles');
@@ -96,6 +110,7 @@ function apply(C, db, me, d) {
     db.users.splice(db.users.indexOf(cur), 1);
     C.log(email, 'Kullanıcı kaldırıldı');
     db._removed = (db._removed || []).concat([email]);
+    db._cvDel = (db._cvDel || []).concat([email]);
   });
 
   /* ---------- ilanlar ---------- */
@@ -188,7 +203,7 @@ function apply(C, db, me, d) {
   (d.audit || []).slice(0, 30).forEach((a) => {
     if (!a || !a.ev) return;
     const ev = str(a.ev, 300);
-    if (/^(Giriş|Çıkış|Hesap etkinleştirildi|Şifre|Aktivasyon|Yeni cihaz|E-posta kodu|Aday hesabı|Kullanıcı ID|Yönetim rolü|Kullanıcı eklendi|Aşama|Başvuru)/.test(ev)) return; // bunları sunucu kendisi yazar
+    if (/^(Onay|Giriş|Çıkış|Hesap etkinleştirildi|Şifre|Aktivasyon|Yeni cihaz|E-posta kodu|Aday hesabı|Kullanıcı ID|Yönetim rolü|Kullanıcı eklendi|Aşama|Başvuru)/.test(ev)) return; // bunları sunucu kendisi yazar
     if (seen.has(ev + '|' + a.email)) return;
     db.audit.unshift({ at: Date.now(), who: me.email, email: str(a.email, 254), ev });
   });
