@@ -1,0 +1,8 @@
+{
+  "name": "derimod-talentx-tests",
+  "private": true,
+  "description": "Derimod TalentX uçtan uca testleri (Playwright) — Playwright ve Chromium ortamda kurulu olmalı (npx playwright install chromium)",
+  "devDependencies": {
+    "pdfjs-dist": "3.11.174"
+  }
+}

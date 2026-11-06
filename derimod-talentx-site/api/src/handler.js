@@ -5,7 +5,7 @@ const { loadDB, persist, snap, view, bindCore, drainMail, clone } = require('./s
 const auth = require('./auth');
 const sync = require('./sync');
 
-const json = (status, body, cookies) => ({ status, jsonBody: body, cookies: cookies || [], headers: { 'Cache-Control': 'no-store' } });
+const json = (status, body, cookies) => ({ status, jsonBody: body, cookies: cookies || [], headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' } });
 
 async function readBody(req) { try { return await req.json(); } catch (e) { return {}; } }
 
@@ -80,7 +80,14 @@ async function handler(req) {
       if (body.kind === 'cv') {
         const text = String(body.text || '').slice(0, 40000);
         if (text.replace(/\s/g, '').length < 80) return json(400, { ok: false, err: 'Metin bulunamadı.' });
+        if (body.consent !== true) return json(400, { ok: false, err: 'Akıllı doldurma için onayın gerekiyor.' });
         prompt = Cx.cvPrompt(text);
+        // kullanım anındaki onayı kayıt altına al (yalnızca eklenir)
+        const u = db.users.find((x) => x.email === email) || {}, l = body.lang === 'en' ? 'en' : 'tr', A = Cx.CN.ai;
+        const ctext = { k: A.k, v: Cx.CN.v, lang: l, title: A.title[l], body: [['', A.text[l]]], entities: Cx.CN.entities || [] };
+        const hash = require('crypto').createHash('sha256').update(JSON.stringify(ctext)).digest('hex'), meta = auth.reqMeta(req, 'akilli-doldur');
+        db._cnrec = (db._cnrec || []).concat([{ at: Date.now(), email, uid: u.uid || '', name: u.name || '', doc: A.k, title: A.title.tr, v: Cx.CN.v, lang: l, via: 'akilli-doldur', ip: meta.ip || '', ua: meta.ua || '', hash }]);
+        db._cntext = Object.assign(db._cntext || {}, { [A.k + '|' + Cx.CN.v + '|' + l]: Object.assign({ hash }, ctext) });
       } else if (body.kind === 'crit') {
         if (!Cx.can('jobs')) return json(403, { ok: false, err: 'Yetkin yok.' });
         const j = db.jobs.find((x) => x.id === body.jobId);
@@ -99,6 +106,7 @@ async function handler(req) {
         return json(200, { ok: true, result });
       } catch (e) {
         console.error(e);
+        await persist(before, db);
         return json(e.code === 429 ? 429 : 502, { ok: false, err: 'Akıllı okuma tamamlanamadı.' });
       }
     }
