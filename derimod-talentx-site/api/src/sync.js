@@ -1,15 +1,17 @@
 // İstemciden gelen değişiklikleri yetki kurallarına göre uygular.
 // İstemciye güvenilmez: her alan, oturumdaki kişinin rolüne göre tek tek kontrol edilir.
 const { clone, J } = require('./state');
+const K = require('./clean');
 
-const str = (v, n) => String(v == null ? '' : v).slice(0, n || 200);
+const str = (v, n) => K.txt(v).slice(0, n || 200);
 const bool = (v) => !!v;
 
 function sanProfile(p) {
   if (!p || typeof p !== 'object') return null;
   const s = J(p);
   if (s.length > 200000) return null;
-  const o = JSON.parse(s);
+  const o = K.deep(JSON.parse(s));
+  if ('linkedin' in o) o.linkedin = K.webUrl(o.linkedin);
   if (o.cv && typeof o.cv === 'object') { delete o.cv.data; o.cv = { name: str(o.cv.name, 200), size: +o.cv.size || 0, type: str(o.cv.type, 80), at: +o.cv.at || Date.now(), blob: bool(o.cv.blob) }; }
   return o;
 }
@@ -51,7 +53,7 @@ function apply(C, db, me, d, meta) {
   (U.upsert || []).slice(0, 2000).forEach((nu) => {
     if (!nu || typeof nu !== 'object') return;
     const email = str(nu.email, 254).trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    if (!K.EMAIL_RE.test(email)) return;
     const cur = find(email);
     if (!cur) {
       if (!can('users')) return deny('Kullanıcı ekleme yetkin yok.');
@@ -118,8 +120,10 @@ function apply(C, db, me, d, meta) {
   (Jb.upsert || []).forEach((nj) => {
     if (!nj || typeof nj !== 'object' || !nj.id) return;
     if (!can('jobs')) return deny('İlan düzenleme yetkin yok.');
-    const j = clone(nj);
-    j.id = str(j.id, 40);
+    const j = K.deep(clone(nj));
+    if (!K.ID_RE.test(j.id)) return deny('Geçersiz ilan kimliği.');
+    j.deadline = K.DATE_RE.test(j.deadline || '') ? j.deadline : '';
+    j.url = K.httpsUrl(j.url);
     j.hms = (j.hms || []).filter((e) => { const u = find(e); return u && u.arole; });
     if (['yayinda', 'kapali', 'taslak'].indexOf(j.status) < 0) j.status = 'yayinda';
     const cur = db.jobs.find((x) => x.id === j.id);
@@ -140,14 +144,14 @@ function apply(C, db, me, d, meta) {
     if (!na || typeof na !== 'object' || !na.id) return;
     const cur = db.apps.find((x) => x.id === na.id);
     if (!cur) {
-      if (na.demo) { if (!can('system')) return deny('Örnek veri yetkin yok.'); if (!/\.test$/i.test(na.email || '')) return; db.apps.push(clone(na)); return; }
+      if (na.demo) { if (!can('system')) return deny('Örnek veri yetkin yok.'); if (!/\.test$/i.test(na.email || '')) return; if (!K.ID_RE.test(na.id)) return; db.apps.push(K.deep(clone(na))); return; }
       // Gerçek başvuru: istemcinin kaydı kullanılmaz; başvuru sunucuda sitenin kendi kurallarıyla yeniden oluşturulur.
       if (na.email !== me.email) return deny('Başkası adına başvuru yapılamaz.');
       const j = C.jobById(na.jobId);
       if (!j || j.status !== 'yayinda') return deny('İlan yayında değil.');
       if (!j.external && !C.isEmp(me)) return deny('Bu ilan yalnızca çalışanlara açık.');
       if (db.apps.some((x) => !x.demo && x.email === me.email && x.jobId === j.id)) return deny('Bu ilana zaten başvurdun.');
-      C.S.k = { ans: (na.ansRaw && typeof na.ansRaw === 'object') ? JSON.parse(J(na.ansRaw)) : {}, kvkk: true, open: null };
+      C.S.k = { ans: (na.ansRaw && typeof na.ansRaw === 'object') ? K.deep(JSON.parse(J(na.ansRaw))) : {}, kvkk: true, open: null };
       if (!C.submitApp(me, j)) return deny(String(C.S.k.err || 'Başvuru tamamlanamadı.').replace(/<[^>]+>/g, ''));
       return;
     }
@@ -178,7 +182,7 @@ function apply(C, db, me, d, meta) {
     if (!can('system')) deny('Örnek veri yetkin yok.');
     else {
       db.talentDemo = db.talentDemo || [];
-      (T.upsert || []).forEach((p) => { if (!p || !p.id || !/\.test$/i.test(p.email || '')) return; const i = db.talentDemo.findIndex((x) => x.id === p.id); const v = clone(p); if (i > -1) db.talentDemo[i] = v; else db.talentDemo.push(v); });
+      (T.upsert || []).forEach((p) => { if (!p || !K.ID_RE.test(p.id || '') || !/\.test$/i.test(p.email || '')) return; const i = db.talentDemo.findIndex((x) => x.id === p.id); const v = K.deep(clone(p)); if (i > -1) db.talentDemo[i] = v; else db.talentDemo.push(v); });
       (T.del || []).forEach((id) => { db.talentDemo = db.talentDemo.filter((x) => x.id !== id); });
     }
   }

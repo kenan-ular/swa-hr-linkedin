@@ -5,7 +5,7 @@ const { loadDB, persist, snap, view, bindCore, drainMail, clone } = require('./s
 const auth = require('./auth');
 const sync = require('./sync');
 
-const json = (status, body, cookies) => ({ status, jsonBody: body, cookies: cookies || [], headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' } });
+const json = (status, body, cookies) => ({ status, jsonBody: body, cookies: cookies || [], headers: { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8', 'X-Content-Type-Options': 'nosniff' } });
 
 async function readBody(req) { try { return await req.json(); } catch (e) { return {}; } }
 
@@ -145,9 +145,15 @@ async function handler(req) {
       const data = String(body.data || '');
       const buf = Buffer.from(data.replace(/^data:[^,]*,/, ''), 'base64');
       if (!buf.length || buf.length > 5 * 1024 * 1024) return json(400, { ok: false, err: 'Dosya 5 MB’tan küçük olmalı.' });
-      const type = /pdf/.test(body.type || '') ? 'application/pdf' : String(body.type || 'application/octet-stream').slice(0, 100);
+      // yalnızca PDF / Word kabul edilir; tür, istemcinin söylediğine değil dosyanın imzasına göre belirlenir
+      const sig = buf.slice(0, 8);
+      const type = sig.slice(0, 5).toString('latin1') === '%PDF-' ? 'application/pdf'
+        : sig.slice(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])) && /\.docx$/i.test(String(body.name || '')) ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : '';
+      // eski .doc biçimi makro taşıyabildiği için kabul edilmez
+      if (!type) return json(400, { ok: false, err: 'Yalnızca PDF ya da Word (.docx) dosyası yükleyebilirsin.' });
       await stores().blob.put(blobName(email), buf, type);
-      return json(200, { ok: true, cv: { name: String(body.name || 'ozgecmis.pdf').slice(0, 200), size: buf.length, type, at: Date.now(), blob: true } });
+      return json(200, { ok: true, cv: { name: require('./clean').txt(body.name || 'ozgecmis.pdf').slice(0, 200), size: buf.length, type, at: Date.now(), blob: true } });
     }
 
     if (path === 'cv' && req.method === 'GET') {
@@ -157,7 +163,7 @@ async function handler(req) {
       if (!ok) return json(403, { ok: false, err: 'Yetkin yok.' });
       const b = await stores().blob.get(blobName(who));
       if (!b) return json(404, { ok: false, err: 'Dosya bulunamadı.' });
-      return { status: 200, body: b.buf, headers: { 'Content-Type': b.type || 'application/pdf', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': (req.query.get('inline') && /pdf/.test(b.type || '') ? 'inline' : 'attachment') + '; filename="ozgecmis' + (/pdf/.test(b.type || '') ? '.pdf' : /wordprocessingml/.test(b.type || '') ? '.docx' : '.doc') + '"' } };
+      return { status: 200, body: b.buf, headers: { 'Content-Type': /^application\/(pdf|vnd\.openxmlformats-officedocument\.wordprocessingml\.document)$/.test(b.type || '') ? b.type : 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'", 'Content-Disposition': (req.query.get('inline') && /pdf/.test(b.type || '') ? 'inline' : 'attachment') + '; filename="ozgecmis' + (/pdf/.test(b.type || '') ? '.pdf' : /wordprocessingml/.test(b.type || '') ? '.docx' : '.doc') + '"' } };
     }
 
     return json(404, { ok: false, err: 'Bulunamadı.' });

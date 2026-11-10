@@ -20,6 +20,13 @@ http.createServer(async (rq, rs) => {
     rs.end(r.jsonBody !== undefined ? JSON.stringify(r.jsonBody) : r.body);
     return;
   }
+  // site/ altındaki statik dosyalar (ör. vendor/ kütüphaneleri)
+  const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+  const sf = path.join(ROOT, 'site', rel);
+  if (rel && sf.startsWith(path.join(ROOT, 'site') + path.sep) && fs.existsSync(sf) && fs.statSync(sf).isFile()) {
+    const ty = { '.js': 'application/javascript; charset=utf-8', '.json': 'application/json', '.map': 'application/json', '.html': 'text/html; charset=utf-8' }[path.extname(sf)] || 'application/octet-stream';
+    rs.writeHead(200, { 'Content-Type': ty }); fs.createReadStream(sf).pipe(rs); return;
+  }
   const f = fs.existsSync(path.join(ROOT, 'site', 'index.html')) ? path.join(ROOT, 'site', 'index.html') : path.join(ROOT, 'index.html');
   rs.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); fs.createReadStream(f).pipe(rs);
 }).listen(PORT, () => console.log('TalentX yerel sunucu: http://localhost:' + PORT));

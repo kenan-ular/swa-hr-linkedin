@@ -507,7 +507,7 @@ table.mtpl{table-layout:fixed;min-width:760px} table.mtpl .em{word-break:normal;
 <main id="app"></main>
 <div id="drawer"></div>
 <footer class="foot"><div class="wrap">
-  <span>Derimod TalentX · İnsan ve Kültür · Prototip v22 · Kasım 2026 · <button type="button" class="linkbtn footlink" data-act="cnRead" data-k="aydinlatma">KVKK Aydınlatma Metni</button></span>
+  <span>Derimod TalentX · İnsan ve Kültür · Prototip v23 · Kasım 2026 · <button type="button" class="linkbtn footlink" data-act="cnRead" data-k="aydinlatma">KVKK Aydınlatma Metni</button></span>
   <span class="i3sig">Derimod · İnsan ve Kültür · <b>i³</b> İnovasyonla fark yarat, ilham ver, iyilikle etkile</span>
 </div></footer>
 <aside class="inbox" id="inbox" hidden aria-live="polite"></aside>
@@ -543,6 +543,10 @@ function layeredD(color,size,cls){
   for(var i=0;i<3;i++)s+='<g transform="translate('+(i*off).toFixed(1)+','+(i*off).toFixed(1)+')"><path d="'+dPath(S)+'" fill="url(#'+id+')"/></g>';
   return s+'</g></svg>';
 }
+/* CSV hücresi: ayırıcı/tırnak kaçışı + formül enjeksiyonu koruması (=, +, -, @ ile başlayan hücreler metne çevrilir) */
+function csvQ(v){v=String(v==null?'':v).replace(/\r\n?/g,'\n');if(/^[=+\-@\t\r]/.test(v))v="'"+v;return /[;,"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+/* E-posta biçimi: yalnızca güvenli karakterler */
+var EMAIL_RE=/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$/;
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 var LOCK='<svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="5.2" width="8" height="5.8" fill="currentColor"/><path d="M3.8 5.2V3.8a2.2 2.2 0 0 1 4.4 0v1.4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
 var GLOBE='<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="4.6" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M1.4 6h9.2M6 1.4c1.6 1.4 1.6 7.8 0 9.2M6 1.4c-1.6 1.4-1.6 7.8 0 9.2" fill="none" stroke="currentColor" stroke-width="1"/></svg>';
@@ -664,7 +668,7 @@ async function srvSubmit(kind){
   var L=S.L;L.err='';L.info='';var tr=document.getElementById('f-trust'),trust=!!(tr&&tr.checked),r;
   {
     if(kind==='email'){var em=document.getElementById('f-email').value.trim().toLowerCase();L.email=em;
-      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){L.err='Geçerli bir e-posta adresi yazın.';return render()}
+      if(!EMAIL_RE.test(em)){L.err='Geçerli bir e-posta adresi yazın.';return render()}
       r=await api('auth/start',{email:em});
       if(r.unknown){L.unknown=true;L.err='Bu adres Derimod TalentX’e tanımlı değil. Çalışansan erişim için İnsan ve Kültür ekibine başvur; şirket dışından bir ilana başvuracaksan aday hesabı oluştur.';return render()}
       L.unknown=false;if(r.err){L.err=r.err;return render()}
@@ -674,7 +678,7 @@ async function srvSubmit(kind){
       if(r.err){L.err=r.err;if(r.step==='email')L.step='email';return render()}
       if(r.ok&&r.state&&r.state.session)return srvLoginDone();if(r.step==='otp')srvOtpStep(r,L.email);return render()}
     if(kind==='register'){var re=document.getElementById('r-email').value.trim().toLowerCase(),rn=document.getElementById('r-name').value.trim();L.email=re;
-      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(re)){L.err='Geçerli bir e-posta adresi yaz.';return render()}
+      if(!EMAIL_RE.test(re)){L.err='Geçerli bir e-posta adresi yaz.';return render()}
       if(!rn){L.err='Ad soyad gerekli.';return render()}
       var rc=cnCollect('r');if(!rc.all){L.err='Devam etmek için sözleşme ve onay kutularının hepsini işaretle.';return render()}
       r=await api('auth/register',{email:re,name:rn,kvkk:true,consents:rc.map});S.cnChk={};if(r.err){L.err=r.err;if(r.step==='email')L.step='email';return render()}
@@ -737,7 +741,7 @@ var AFTER=[
 ];
 var STAT=[['alindi','Alındı'],['degerlendirme','Değerlendirmede'],['gorusme','Görüşme'],['sonuc','Sonuçlandı']];
 var AYLAR=['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-function dLong(iso){if(!iso)return '';var p=iso.split('-');return (+p[2])+' '+AYLAR[+p[1]-1]+' '+p[0]}
+function dLong(iso){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso||''));if(!m||!AYLAR[+m[2]-1])return '';return (+m[3])+' '+AYLAR[+m[2]-1]+' '+m[1]}
 function daysLeft(iso){if(!iso)return null;var e=new Date(iso+'T23:59:59');return Math.ceil((e-Date.now())/864e5)}
 function liveJobs(){return DB.jobs.filter(function(j){return j.status==='yayinda'})}
 var ANALYTICS=[
@@ -894,7 +898,7 @@ V.etkinlikler=function(){
   return h+'</div></div>';
 };
 function evRow(day,mon,title,place,desc,links,pill){
-  return '<div class="row"><div class="date"><b>'+day+'</b><span>'+mon+'</span></div><div><h3>'+esc(title)+'</h3><div class="meta">'+esc(place)+'</div>'+desc.split(/\n\n/).map(function(x){return '<p>'+esc(x)+'</p>'}).join('')+(links.length?'<div class="links">'+links.map(function(l){return '<a href="'+(/^https?:/.test(l[1])?esc(l[1]):A+l[1])+'" target="_blank" rel="noopener">'+esc(l[0])+' ↗</a>'}).join('')+'</div>':'')+'</div><div class="side">'+pill+'</div></div>';
+  return '<div class="row"><div class="date"><b>'+day+'</b><span>'+mon+'</span></div><div><h3>'+esc(title)+'</h3><div class="meta">'+esc(place)+'</div>'+desc.split(/\n\n/).map(function(x){return '<p>'+esc(x)+'</p>'}).join('')+(links.length?'<div class="links">'+links.map(function(l){return '<a href="'+esc(/^https?:/.test(l[1])?l[1]:A+l[1])+'" target="_blank" rel="noopener">'+esc(l[0])+' ↗</a>'}).join('')+'</div>':'')+'</div><div class="side">'+pill+'</div></div>';
 }
 V.uygulamalar=function(){
   var h=masthead('Uygulamalar · Çalışanlara özel','İşini kolaylaştıran araçlar.','Kılavuzlar, rehberler ve İnsan ve Kültür uygulamaları.');
@@ -1255,7 +1259,7 @@ V.profil=function(){
   h+='<section class="panel"><h3>Özgeçmiş</h3><p class="ph">PDF, DOC ya da DOCX · en fazla 5 MB.</p>'+
     (p.cv?'<div class="cvrow"><span class="cvic" aria-hidden="true">'+esc((p.cv.name.split('.').pop()||'').toUpperCase().slice(0,4))+'</span><div style="min-width:0"><b style="word-break:break-all">'+esc(p.cv.name)+'</b><span>'+Math.max(1,Math.round(p.cv.size/1024))+' KB · '+dt(p.cv.at)+' yüklendi</span></div><button class="btn ghost sm" data-act="cvView" data-e="'+esc(u.email)+'">Görüntüle</button><label class="btn ghost sm" for="cvfile">Değiştir</label><button class="btn quiet sm" data-act="cvDel">Kaldır</button></div>':
      '<label class="drop" for="cvfile"><b>Özgeçmişini yükle</b><span>Dosya seçmek için tıkla</span></label>')+
-    '<input type="file" id="cvfile" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="sr">'+(S.pfErr?'<div class="msg err mt">'+S.pfErr+'</div>':'')+cvxHTML()+'</section>';
+    '<input type="file" id="cvfile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" class="sr">'+(S.pfErr?'<div class="msg err mt">'+S.pfErr+'</div>':'')+cvxHTML()+'</section>';
   // eğitim
   h+='<section class="panel"><h3>Eğitim</h3><p class="ph">En son tamamladığın ya da devam ettiğin eğitimden başla.</p><div class="entries">';
   (p.edu||[]).forEach(function(e,i){
@@ -1663,7 +1667,7 @@ function impBuild(rows,src){
   m.body.slice(0,2000).forEach(function(r,idx){
     var g=function(k){return m.map[k]===undefined?'':String(r[m.map[k]]==null?'':r[m.map[k]]).trim()};
     var o={line:idx+(m.head?2:1),email:g('email').toLowerCase(),name:g('name'),dept:'',role:'calisan',arole:'',bl:[],err:[],warn:[],status:'new'};
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(o.email))o.err.push('Geçersiz e-posta');
+    if(!EMAIL_RE.test(o.email))o.err.push('Geçersiz e-posta');
     else if(seen[o.email])o.err.push('Dosyada '+seen[o.email]+'. satırla aynı e-posta');
     if(o.email)seen[o.email]=seen[o.email]||o.line;
     if(!o.name&&o.email.indexOf('@')>0){o.name=nameFrom(o.email);o.warn.push('Ad soyad e-postadan türetildi')}
@@ -1905,7 +1909,7 @@ function atsTab(){
 }
 function atsCsv(scope){
   var F=S.ats,rows=atsSort(atsFilter(atsBase()));if(scope==='sel')rows=rows.filter(function(a){return F.sel[a.id]});
-  var q=function(v){v=String(v==null?'':v);return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  var q=csvQ;
   var head=['Kullanıcı ID','Aday','E-posta','Telefon','İlan','Tür','Aşama','Olumsuz nedeni','Ortalama puan','HM görüşü','Eleme kriteri','Başvuru tarihi','Aşamada gün','İlan uyumu','Business Line','Eğitim','Deneyim','Beceriler'];
   var lines=[head.join(';')].concat(rows.map(function(a){var j=jobById(a.jobId),pr=a.profile||{},v=hmViewOf(a);return [a.uid||'',a.name,a.email,a.phone,j?j.title:'',a.type==='ic'?'İç aday':'Dış aday',pipeLabel(a.status),a.reason||'',avgR(a)?avgR(a).toFixed(1).replace('.',','):'',v?(HMV.filter(function(x){return x[0]===v.v})[0]||['',''])[1]:'',a.flagged?'Var':'',dt(a.at),CLOSED.indexOf(a.status)>-1?'':daysIn(a),fitOf(a).pct<0?'':'%'+fitOf(a).pct,appBL(a),pr.edu||'',pr.exp||'',(pr.skills||[]).join(', ')].map(q).join(';')}));
   if(DOWNLOADS)DOWNLOADS.save({filename:'derimod-basvurular-'+new Date().toISOString().slice(0,10)+'.csv',data:'﻿'+lines.join('\r\n')}).catch(function(){});
@@ -2172,7 +2176,7 @@ function talentDrawer(){
 function talCsv(scope){
   var F=S.tal,all=talentPeople(),list=talSort(talFilter(all));
   if(scope==='sel')list=list.filter(function(p){return F.sel[p.id]});if(scope==='eksik')list=all.filter(function(p){return p.kind==='ic'&&!tFacts(p).ready});if(scope==='pr')list=all.filter(function(p){return (DB.prList||[]).indexOf(p.id)>-1});
-  var q=function(v){v=String(v==null?'':v);return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  var q=csvQ;
   var head=['Kullanıcı ID','Ad soyad','E-posta','Tür','Business Line','Profil %','Eksik alanlar','Eğitim','Deneyim','Şehir','Beceriler','Yetkinlikler','Diller','İlgi alanları','Başvuru sayısı','Son güncelleme','PR listesi'];
   var lines=[head.join(';')].concat(list.map(function(p){var f=tFacts(p);return [p.uid,p.name,p.email,p.kind==='ic'?'İç aday':'Dış aday',p.bl,f.pct,f.miss.join(', '),f.edu,f.exp,f.city,f.skills.join(', '),f.comps.join(', '),f.langs.map(function(l){return l.lang+' '+(l.level||'')}).join(', '),f.ints.join(', '),f.apps,f.updated?dt(f.updated):'',(DB.prList||[]).indexOf(p.id)>-1?'Evet':''].map(q).join(';')}));
   var name={eksik:'profil-hatirlatma',pr:'potential-review-listesi'}[scope]||'yetenek-havuzu';
@@ -2298,7 +2302,7 @@ function fn1(n){return String(n||'').trim().split(/\s+/)[0]||''}
 function mHi(d){var f=fn1(d.name);return mP('Merhaba'+(f?' '+esc(f):'')+',')}
 function mP(t){return '<p style="margin:0 0 14px;font-family:'+MF+';font-size:15px;line-height:1.6;color:#47464B">'+t+'</p>'}
 function mB(t){return '<b style="color:#1A1A1D;font-weight:600">'+t+'</b>'}
-function mBtn(l,h){return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 24px"><tr><td bgcolor="#AC0065" style="background:#AC0065"><a href="'+mlink(h)+'" data-nav="'+h+'" target="_blank" style="display:inline-block;padding:13px 24px;font-family:'+MF+';font-size:14px;font-weight:600;line-height:1.2;color:#FFFFFF;text-decoration:none">'+l+'</a></td></tr></table>'}
+function mBtn(l,h){return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:10px 0 24px"><tr><td bgcolor="#AC0065" style="background:#AC0065"><a href="'+esc(mlink(h))+'" data-nav="'+esc(h)+'" target="_blank" style="display:inline-block;padding:13px 24px;font-family:'+MF+';font-size:14px;font-weight:600;line-height:1.2;color:#FFFFFF;text-decoration:none">'+l+'</a></td></tr></table>'}
 function mKV(rows){rows=rows.filter(function(r){return r[1]});return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 22px;border-top:1px solid #EFEAE5">'+rows.map(function(r){return '<tr><td style="padding:10px 12px 10px 0;border-bottom:1px solid #EFEAE5;font-family:'+MF+';font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6E6D72;width:38%;vertical-align:top">'+r[0]+'</td><td style="padding:10px 0;border-bottom:1px solid #EFEAE5;font-family:'+MF+';font-size:14px;line-height:1.45;color:#1A1A1D;vertical-align:top">'+r[1]+'</td></tr>'}).join('')+'</table>'}
 function mList(items,num){return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 20px">'+items.map(function(it,i){return '<tr><td style="width:34px;padding:0 0 12px;vertical-align:top"><span style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;background:#FBF2F7;color:#AC0065;font-family:Arial,sans-serif;font-size:12px;font-weight:700">'+(num?i+1:'•')+'</span></td><td style="padding:2px 0 12px;font-family:'+MF+';font-size:14px;line-height:1.5;color:#47464B;vertical-align:top">'+(it[1]!==undefined?mB(it[0])+'<br>'+it[1]:it)+'</td></tr>'}).join('')+'</table>'}
 function mSteps(cur){var L=['Alındı','Değer&shy;lendirme','Görüşme','Sonuç'];return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:2px 0 22px;table-layout:fixed"><tr>'+L.map(function(l,i){var on=i<=cur;return '<td style="padding:0 3px 0 0;vertical-align:top"><div style="height:4px;background:'+(on?'#AC0065':'#E6E1DC')+';font-size:0;line-height:0">&nbsp;</div><div style="padding-top:7px;font-family:'+MF+';font-size:12px;line-height:1.3;word-wrap:break-word;overflow-wrap:break-word;-webkit-hyphens:manual;hyphens:manual;color:'+(i===cur?'#AC0065':on?'#1A1A1D':'#8C8A8F')+';font-weight:'+(i===cur?'700':'500')+'">'+l+'</div></td>'}).join('')+'</tr></table>'}
@@ -2575,7 +2579,7 @@ function cnClick(act,b){
   if(act==='cnClose'){S.cdoc=null;document.getElementById('drawer').innerHTML='';document.body.classList.remove('noscroll');return true}
   if(act==='cnLang'){S.clang=b.getAttribute('data-l')==='en'?'en':'tr';cnRefreshLang();if(S.cdoc)document.getElementById('drawer').innerHTML=consentDrawer();if(S.page==='onay'||(me()&&needsConsent(me())))render();return true}
   if(act==='cnExport'){if(!can('users')&&!can('audit'))return true;
-    var q=function(v){v=String(v==null?'':v);return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+    var q=csvQ;
     var out=function(rows){var head=['Tarih','Kullanıcı ID','Ad soyad','E-posta','Metin','Sürüm','Dil','Onay adımı','IP','Tarayıcı','Metin özeti (SHA-256)'];
       var lines=[head.join(';')].concat(rows.sort(function(a,b){return b.at-a.at}).map(function(r){return [dt(r.at),r.uid,r.name,r.email,r.title,r.v,r.lang==='en'?'English':'Türkçe',{'aday-kaydi':'Aday kaydı','hesap-etkinlestirme':'Hesap etkinleştirme','onay-ekrani':'Onay ekranı'}[r.via]||r.via||'',r.ip||'',r.ua||'',r.hash||''].map(q).join(';')}));
       if(DOWNLOADS)DOWNLOADS.save({filename:'derimod-talentx-onay-kayitlari-'+new Date().toISOString().slice(0,10)+'.csv',data:'\ufeff'+lines.join('\r\n')}).catch(function(){})};
@@ -2748,7 +2752,7 @@ async function onSubmit(form){
   if(SERVER&&/^(email|password|register|otp|setpw)$/.test(kind))return srvSubmit(kind);
   if(kind==='email'){
     var em=document.getElementById('f-email').value.trim().toLowerCase();L.email=em;
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){L.err='Geçerli bir e-posta adresi yazın.';return render()}
+    if(!EMAIL_RE.test(em)){L.err='Geçerli bir e-posta adresi yazın.';return render()}
     var u=find(em);
     L.unknown=false;
     if(!u){L.unknown=true;L.err='Bu adres Derimod TalentX’e tanımlı değil. Çalışansan erişim için İnsan ve Kültür ekibine başvur; şirket dışından bir ilana başvuracaksan aday hesabı oluştur.';return render()}
@@ -2773,7 +2777,7 @@ async function onSubmit(form){
   }
   if(kind==='register'){
     var re=document.getElementById('r-email').value.trim().toLowerCase(),rn=document.getElementById('r-name').value.trim();L.email=re;
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(re)){L.err='Geçerli bir e-posta adresi yaz.';return render()}
+    if(!EMAIL_RE.test(re)){L.err='Geçerli bir e-posta adresi yaz.';return render()}
     if(!rn){L.err='Ad soyad gerekli.';return render()}
     var rc=cnCollect('r');if(!rc.all){L.err='Devam etmek için sözleşme ve onay kutularının hepsini işaretle.';return render()}
     var ex=find(re);
@@ -2808,7 +2812,7 @@ async function onSubmit(form){
   if(kind==='addUser'){
     var A2=S.adm;A2.err='';A2.ok='';
     var e=document.getElementById('a-email').value.trim().toLowerCase(),n=document.getElementById('a-name').value.trim();
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)){A2.err='Geçerli bir e-posta adresi yazın.';return render()}
+    if(!EMAIL_RE.test(e)){A2.err='Geçerli bir e-posta adresi yazın.';return render()}
     if(find(e)){A2.err=esc(e)+' zaten listede.';return render()}
     if(!n)n=nameFrom(e);
     var ar1=document.getElementById('a-arole').value;if(ar1==='exec'&&me().arole!=='exec')ar1='';
@@ -2821,7 +2825,7 @@ async function onSubmit(form){
     var B=S.adm;B.err='';B.ok='';
     var lines=document.getElementById('b-list').value.split(/[\s,;]+/).map(function(x){return x.trim().toLowerCase()}).filter(Boolean);
     var added=[],skipped=[],bad=[];
-    lines.forEach(function(x){if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x))bad.push(x);else if(find(x))skipped.push(x);else{var ar2=document.getElementById('b-arole').value;if(ar2==='exec'&&me().arole!=='exec')ar2='';addUser(x,nameFrom(x),document.getElementById('b-dept').value,document.getElementById('b-role').value,ar2);added.push(x)}});
+    lines.forEach(function(x){if(!EMAIL_RE.test(x))bad.push(x);else if(find(x))skipped.push(x);else{var ar2=document.getElementById('b-arole').value;if(ar2==='exec'&&me().arole!=='exec')ar2='';addUser(x,nameFrom(x),document.getElementById('b-dept').value,document.getElementById('b-role').value,ar2);added.push(x)}});
     if(!lines.length){B.err='Listeye en az bir e-posta yazın.';return render()}
     B.ok=added.length+' kullanıcı eklendi.'+(skipped.length?' '+skipped.length+' adres zaten listedeydi.':'');
     if(bad.length)B.err='Geçersiz adresler atlandı: '+bad.map(esc).join(', ');
@@ -2874,7 +2878,7 @@ function pfAction(act,b){
 }
 function cvUpload(inp){
   var f=inp.files&&inp.files[0],u=me();if(!f||!u)return;S.pfErr='';
-  if(!/\.(pdf|docx?)$/i.test(f.name)){S.pfErr='Yalnızca PDF, DOC ya da DOCX yükleyebilirsin.';render();return}
+  if(!/\.(pdf|docx)$/i.test(f.name)){S.pfErr='Yalnızca PDF ya da DOCX yükleyebilirsin.';render();return}
   if(f.size>5*1024*1024){S.pfErr='Dosya 5 MB’tan büyük. Daha küçük bir dosya yükle.';render();return}
   S.cvFile=f;S.cvx={status:'idle'};
   if(SERVER){srvCvUpload(f,u);return}

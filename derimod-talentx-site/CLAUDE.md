@@ -30,6 +30,10 @@ Kod değiştirmeden önce sonuna kadar oku.
    onayı olmadan yapma; hukuk teyidi gerekebilir.
 7. **Onay kayıtları yalnızca eklenir.** `consent` ve `cntext` bölümlerindeki kayıtlar silinmez,
    değiştirilmez.
+8. **Kullanıcı verisi asla ham HTML olarak basılmaz.** Arayüze giden her değişken `esc()`'den
+   geçer; bağlantılar yalnızca `https?:` ile, CSV hücreleri yalnızca `csvQ()` ile üretilir. Satır
+   içi `on*=` olay işleyicisi, `eval`, `new Function` ve ikinci bir `<script>` bloğu eklenmez
+   (canlı sürümün CSP'si buna izin vermez). Güvenlik bölümüne (§5a) bak.
 
 ---
 
@@ -41,9 +45,11 @@ derimod-talentx-site/
 ├─ source/
 │  ├─ src.html               TEK KAYNAK: arayüz + uygulama kodu (HTML/CSS/JS, tek dosya)
 │  ├─ logo.svg               Derimod logosu; derlemede __LOGO__ yerine konur
+│  ├─ vendor/                pdf.js 3.11.174 ve SheetJS 0.18.5 (canlıda site/vendor'a kopyalanır)
 │  └─ build.py               derleme betiği
 ├─ site/                     yayınlanan sayfa
-│  ├─ index.html             ÜRETİLİR (build.py)
+│  ├─ index.html             ÜRETİLİR (build.py) — CSP ile
+│  ├─ vendor/                ÜRETİLİR (build.py, source/vendor'dan)
 │  ├─ staticwebapp.config.json  güvenlik başlıkları
 │  └─ README.md
 ├─ api/                      sunucu: Azure Functions v4, Node 20 (SWA yönetilen API)
@@ -59,11 +65,13 @@ derimod-talentx-site/
 │     ├─ auth.js             giriş, OTP, şifre, oturum, güvenilen cihaz
 │     ├─ store.js            Azure Table/Blob ya da bellek içi depo
 │     ├─ mailer.js           Azure Communication Services Email
+│     ├─ clean.js            kullanıcı metni temizleme ve biçim doğrulama (güvenlik)
 │     └─ ai.js               Azure OpenAI (akıllı okuma)
 └─ tests/
    ├─ run.sh                 derle + yerel sunucu + sahte Azure OpenAI + uçtan uca test
    ├─ e2e-server.js          Playwright senaryosu
    ├─ mock-openai.js         sahte Azure OpenAI
+   ├─ security.sh            güvenlik testleri (sanitize.js, csp-check.js, xss-fuzz.js)
    └─ fixtures/ornek-cv.pdf  kurgusal test özgeçmişi
 ```
 
@@ -137,9 +145,9 @@ analytics, audit, system. Son Executive Admin kaldırılamaz; HR Admin Executive
   metnin SHA-256 özeti. Metnin kendisi `cntext`'te sürüm başına bir kez saklanır.
 
 ### Akıllı okuma
-PDF metni tarayıcıda pdf.js (cdnjs, 3.11.174) ile çıkarılır. Temel okuma kural tabanlıdır ve
+PDF metni tarayıcıda pdf.js (3.11.174; canlıda kendi alanımızdan, önizlemede cdnjs) ile çıkarılır. Temel okuma kural tabanlıdır ve
 her zaman çalışır. Akıllı okuma yalnızca Azure OpenAI tanımlıysa görünür; dosya değil yalnızca
-metin gönderilir, öneriler kullanıcı onaylamadan profile yazılmaz. Taranmış PDF ve Word dosyaları
+metin gönderilir, öneriler kullanıcı onaylamadan profile yazılmaz. Taranmış PDF ve Word (.docx) dosyaları
 okunmaz (yalnızca saklanır). Kişi başı günlük sınır `AI_DAILY_LIMIT` (varsayılan 20).
 
 ---
@@ -181,6 +189,27 @@ ekleme ve rol atama, aday kaydı, profil, CV yükleme/görüntüleme, başvuru, 
 adayın iç notları görememesi, yetkisiz CV erişiminin engellenmesi, akıllı okuma onayı ve
 günlük akış, onay kayıtları ve CSV dışa aktarımı, güvenilen cihazla giriş.
 Yeni bir özellik eklediğinde senaryoya kontrolünü de ekle.
+
+### 5a. Güvenlik (XSS ve veri sızıntısına karşı katmanlar)
+Kasım 2026'da "sahte CV ile blind XSS" senaryosuna karşı denetlendi. Katmanlar:
+1. **Çıktı kaçışı:** tüm şablonlarda `esc()`; tarih (`dLong`), e-posta düğmesi (`mBtn`), etkinlik
+   bağlantıları dahil. E-posta önizlemesi `sandbox` iframe'de (betik çalışmaz).
+2. **Sunucu tarafı temizleme (`api/src/clean.js`):** kullanıcıdan gelen tüm metinlerde `<`/`>` →
+   `‹`/`›`, kontrol karakterleri silinir, `__proto__` anahtarları atılır. İlan kimliği
+   `[A-Za-z0-9_-]`, son başvuru `YYYY-AA-GG`, ilan bağlantısı yalnızca `https`, LinkedIn yalnızca
+   `http(s)`. E-posta yalnızca güvenli karakterler (`EMAIL_RE`, istemci ve sunucuda aynı).
+3. **CSP:** `build.py` canlı sayfaya, tek `<script>` bloğunun SHA-256 özetine dayalı katı bir
+   İçerik Güvenlik Politikası ekler; pdf.js ve SheetJS `site/vendor/`'dan sunulur (üçüncü taraf
+   CDN yok). Kaçış bir yerde unutulsa bile enjekte HTML çalışmaz.
+4. **CV dosyaları:** tür, istemcinin bildirdiğine değil dosya imzasına göre belirlenir (yalnızca
+   PDF ve DOCX; makro taşıyabilen `.doc` reddedilir). İndirme/görüntüleme yanıtı
+   `Content-Security-Policy: sandbox` ve `nosniff` ile döner.
+5. **CSV:** `=`, `+`, `-`, `@` ile başlayan hücreler metne çevrilir (Excel formül enjeksiyonu).
+6. **Erişim:** veriler sunucuda role göre süzülür (`state.view`); aday iç notları/puanları göremez.
+
+Güvenlik testleri: `./tests/security.sh` (sunucu temizleme + CSP + kayıtlı XSS taraması; tarama
+~2 400 metin alanına zararlı HTML ekleyip yönetici ve aday görünümündeki tüm sayfa/çekmeceleri gezer).
+Arayüze yeni bir veri alanı eklediğinde bu testi çalıştır.
 
 Görsel değişikliklerde ayrıca kontrol et: 1280 px ve 390 px (mobil) genişlikte yatay kaydırma
 olmamalı; metin/arka plan kontrastı WCAG AA'yı sağlamalı.

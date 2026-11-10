@@ -59,7 +59,8 @@ async function sendCode(C, db, email, purpose) {
 function reqMeta(req, via) {
   const h = (k) => String(req.headers.get(k) || '');
   const ip = (h('x-azure-clientip') || h('x-client-ip') || h('x-forwarded-for').split(',')[0] || '').trim().replace(/:\d+$/, '');
-  return { via, ip: ip.slice(0, 64), ua: h('user-agent').slice(0, 300) };
+  const T = require('./clean').txt;
+  return { via, ip: (/^[0-9a-fA-F:.]{2,64}$/.test(ip) ? ip : ''), ua: T(h('user-agent')).slice(0, 300) };
 }
 function rules(C, pw, email) { const r = C.pwRules(pw, email); return r.len && r.mix && r['case'] && r.mail; }
 
@@ -76,7 +77,7 @@ async function handle(op, body, req, res, C, db) {
     res.cookies.push(ck(req, 'tx_s', '', 0));
     return { ok: true };
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { err: 'Geçerli bir e-posta adresi yaz.' };
+  if (!require('./clean').EMAIL_RE.test(email)) return { err: 'Geçerli bir e-posta adresi yaz.' };
   const cred = await st.get('cred', email);
   const locked = cred && cred.lockUntil > Date.now();
 
@@ -88,7 +89,7 @@ async function handle(op, body, req, res, C, db) {
     return { step: 'password', purpose: 'giris' };
   }
   if (op === 'register') {
-    const name = String(body.name || '').trim().slice(0, 120);
+    const name = require('./clean').txt(body.name).trim().slice(0, 120);
     if (!name) return { err: 'Ad soyad gerekli.' };
     const cs = body.consents || {};
     if (C.CN.docs.some((d) => d.req && !cs[d.k])) return { err: 'Devam etmek için sözleşme ve onay kutularının hepsini işaretle.' };
